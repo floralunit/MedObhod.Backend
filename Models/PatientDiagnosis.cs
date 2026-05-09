@@ -13,12 +13,12 @@ public partial class PatientDiagnosis
     public Guid PatientDiagnoseId { get; set; }
 
     [Column("Hospitalization_ID")]
-    public Guid? HospitalizationId { get; set; }
+    public Guid HospitalizationId { get; set; }
 
     [Column("Diagnosis_ID")]
-    public Guid? DiagnosisId { get; set; }
+    public Guid DiagnosisId { get; set; }
 
-    public bool? IsPrimary { get; set; }
+    public bool IsPrimary { get; set; }
 
     public DateTime CreatedDt { get; set; }
 

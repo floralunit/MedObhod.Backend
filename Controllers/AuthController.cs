@@ -181,6 +181,15 @@ public class AuthController : ControllerBase
     {
         try
         {
+            // Логируем входящий запрос для отладки
+            _logger.LogInformation("Create user request: {@Request}", request);
+
+            if (!ModelState.IsValid)
+            {
+                var errors = ModelState.Values.SelectMany(v => v.Errors).Select(e => e.ErrorMessage);
+                return BadRequest(BaseResponse<object>.Error($"Invalid data: {string.Join(", ", errors)}", 400));
+            }
+
             var createdBy = Guid.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value!);
             var user = await _authService.CreateUserAsync(request, createdBy);
 

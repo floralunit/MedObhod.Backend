@@ -536,4 +536,189 @@ public class DataSyncService : IDataSyncService
         }
         return false;
     }
+
+    public async Task<List<UserSyncDto>> GetUsersForSyncAsync(DateTime? since)
+    {
+        var query = _context.Users.AsQueryable();
+
+        if (since.HasValue)
+        {
+            query = query.Where(u => u.UpdatedDt > since.Value || u.CreatedDt > since.Value);
+        }
+
+        return await query
+            .Select(u => new UserSyncDto
+            {
+                Id = u.UserId,
+                Login = u.Login,
+                FullName = u.FullName,
+                Role = u.Role,
+                Version = u.Version,
+                UpdatedDt = u.UpdatedDt,
+                IsDeleted = u.IsDeleted
+            })
+            .ToListAsync();
+    }
+
+    public async Task<List<VitalSignSyncDto>> GetChangedVitalSignsAsync(Guid? hospitalizationId, DateTime? since)
+    {
+        var query = _context.VitalSigns
+            .Where(v => !v.IsDeleted)
+            .AsQueryable();
+
+        if (hospitalizationId.HasValue)
+        {
+            query = query.Where(v => v.HospitalizationId == hospitalizationId.Value);
+        }
+
+        if (since.HasValue)
+        {
+            query = query.Where(v => v.MeasuredDt > since.Value);
+        }
+
+        return await query
+            .OrderByDescending(v => v.MeasuredDt)
+            .Select(v => new VitalSignSyncDto
+            {
+                Id = v.VitalSignId,
+                HospitalizationId = v.HospitalizationId,
+                MeasuredDt = v.MeasuredDt,
+                Temperature = v.Temperature,
+                Pulse = v.Pulse,
+                SystolicBP = v.SystolicBp,
+                DiastolicBP = v.DiastolicBp,
+                SpO2 = v.SpO2,
+                RespiratoryRate = v.RespiratoryRate,
+                NEWSScore = v.Newsscore,
+                InsUserId = v.InsUserId,
+                Version = v.Version
+            })
+            .ToListAsync();
+    }
+
+    public async Task<List<AppointmentSyncDto>> GetChangedAppointmentsAsync(Guid? hospitalizationId, DateTime? since)
+    {
+        var query = _context.Appointments
+            .Where(a => !a.IsDeleted)
+            .AsQueryable();
+
+        if (hospitalizationId.HasValue)
+        {
+            query = query.Where(a => a.HospitalizationId == hospitalizationId.Value);
+        }
+
+        if (since.HasValue)
+        {
+            query = query.Where(a => a.UpdatedDt > since.Value || a.CreatedDt > since.Value);
+        }
+
+        return await query
+            .Select(a => new AppointmentSyncDto
+            {
+                Id = a.AppointmentId,
+                HospitalizationId = a.HospitalizationId,
+                TemplateId = a.TemplateId,
+                InsUserId = a.InsUserId,
+                Type = a.Type,
+                Name = a.Name,
+                Priority = a.Priority,
+                DurationMin = a.DurationMin,
+                Instructions = a.Instructions,
+                Notes = a.Notes,
+                Status = a.Status,
+                Version = a.Version,
+                UpdatedDt = a.UpdatedDt
+            })
+            .ToListAsync();
+    }
+
+    public async Task<bool> UpdateAppointmentStatusAsync(Guid appointmentId, string status, Guid? completedBy)
+    {
+        var appointment = await _context.Appointments
+            .FirstOrDefaultAsync(a => a.AppointmentId == appointmentId && !a.IsDeleted);
+
+        if (appointment == null) return false;
+
+        appointment.Status = status;
+        appointment.UpdatedDt = DateTime.UtcNow;
+        appointment.Version++;
+
+        if (status == "completed" && completedBy.HasValue)
+        {
+            // Добавляем запись о выполнении
+            var execution = new AppointmentExecution
+            {
+                AppointmentExecutionId = Guid.NewGuid(),
+                AppointmentId = appointmentId,
+                ExecutedAt = DateTime.UtcNow,
+                ExecutedUserId = completedBy.Value,
+                Status = status,
+                CreatedDt = DateTime.UtcNow,
+                UpdatedDt = DateTime.UtcNow,
+                IsDeleted = false,
+                Version = 1
+            };
+            _context.AppointmentExecutions.Add(execution);
+        }
+
+        await _context.SaveChangesAsync();
+        return true;
+    }
+
+    public async Task<List<PatientDiagnosisSyncDto>> GetChangedPatientDiagnosesAsync(DateTime? since)
+    {
+        var query = _context.PatientDiagnoses
+            .Where(pd => !pd.IsDeleted)
+            .AsQueryable();
+
+        if (since.HasValue)
+        {
+            query = query.Where(pd => pd.UpdatedDt > since.Value || pd.CreatedDt > since.Value);
+        }
+
+        return await query
+            .Select(pd => new PatientDiagnosisSyncDto
+            {
+                Id = pd.PatientDiagnoseId,
+                HospitalizationId = pd.HospitalizationId,
+                DiagnosisId = pd.DiagnosisId,
+                IsPrimary = pd.IsPrimary,
+                Version = pd.Version,
+                UpdatedDt = pd.UpdatedDt
+            })
+            .ToListAsync();
+    }
+
+    public async Task<Guid> UpsertPatientDiagnosisAsync(PatientDiagnosisSyncDto dto)
+    {
+        var existing = await _context.PatientDiagnoses
+            .FirstOrDefaultAsync(pd => pd.PatientDiagnoseId == dto.Id);
+
+        if (existing == null)
+        {
+            var newPatientDiagnosis = new PatientDiagnosis
+            {
+                PatientDiagnoseId = dto.Id,
+                HospitalizationId = dto.HospitalizationId,
+                DiagnosisId = dto.DiagnosisId,
+                IsPrimary = dto.IsPrimary,
+                CreatedDt = DateTime.UtcNow,
+                UpdatedDt = DateTime.UtcNow,
+                IsDeleted = false,
+                Version = 1
+            };
+            _context.PatientDiagnoses.Add(newPatientDiagnosis);
+            return newPatientDiagnosis.PatientDiagnoseId;
+        }
+        else
+        {
+            if (dto.Version > existing.Version)
+            {
+                existing.IsPrimary = dto.IsPrimary;
+                existing.UpdatedDt = DateTime.UtcNow;
+                existing.Version++;
+            }
+            return existing.PatientDiagnoseId;
+        }
+    }
 }

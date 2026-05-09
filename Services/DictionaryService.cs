@@ -345,4 +345,18 @@ public class DictionaryService : IDictionaryService
 
         return true;
     }
+
+    public async Task<List<DiagnosisDto>> GetAllDiagnosesAsync()
+    {
+        return await _context.Diagnoses
+                .Where(d => !d.IsDeleted)
+                .Select(d => new DiagnosisDto
+                {
+                    Id = d.DiagnoseId,
+                    Name = d.Name,
+                    Code = d.Code
+                })
+                .OrderBy(d => d.Name)
+                .ToListAsync();
+    }
 }

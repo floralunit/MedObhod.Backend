@@ -22,4 +22,6 @@ public interface IDictionaryService
     Task<AppointmentTemplateResponseDto> CreateTemplateAsync(AppointmentTemplateCreateDto dto);
     Task<AppointmentTemplateResponseDto?> UpdateTemplateAsync(AppointmentTemplateUpdateDto dto);
     Task<bool> DeleteTemplateAsync(string id);
+
+    Task<List<DiagnosisDto>> GetAllDiagnosesAsync();
 }

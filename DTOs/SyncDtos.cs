@@ -38,6 +38,7 @@ public class PatientSyncDto
     public string Gender { get; set; } = string.Empty;
     public long Version { get; set; }
     public DateTime? UpdatedDt { get; set; }
+    public bool IsDeleted { get; set; }
 }
 
 public class HospitalizationSyncDto
@@ -52,6 +53,7 @@ public class HospitalizationSyncDto
     public string Status { get; set; } = string.Empty;
     public long Version { get; set; }
     public DateTime? UpdatedDt { get; set; }
+    public bool IsDeleted { get; set; }
 }
 
 public class VitalSignSyncDto
@@ -65,6 +67,7 @@ public class VitalSignSyncDto
     public int? DiastolicBP { get; set; }
     public int? SpO2 { get; set; }
     public int? RespiratoryRate { get; set; }
+    public int? NEWSScore { get; set; }
     public Guid InsUserId { get; set; }
     public long Version { get; set; }
 }
@@ -101,4 +104,31 @@ public class DoctorNoteSyncDto
     public string? TreatmentEffectiveness { get; set; }
     public string? PlanNote { get; set; }
     public long Version { get; set; }
+}
+
+public class UserSyncDto
+{
+    public Guid Id { get; set; }
+    public string Login { get; set; } = string.Empty;
+    public string FullName { get; set; } = string.Empty;
+    public string Role { get; set; } = string.Empty;
+    public long Version { get; set; }
+    public DateTime? UpdatedDt { get; set; }
+    public bool IsDeleted { get; set; }
+}
+
+public class UpdateAppointmentRequest
+{
+    public string Status { get; set; } = string.Empty;
+    public Guid? CompletedBy { get; set; }
+}
+
+public class PatientDiagnosisSyncDto
+{
+    public Guid Id { get; set; }
+    public Guid HospitalizationId { get; set; }
+    public Guid DiagnosisId { get; set; }
+    public bool IsPrimary { get; set; }
+    public long Version { get; set; }
+    public DateTime? UpdatedDt { get; set; }
 }

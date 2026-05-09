@@ -8,6 +8,8 @@ using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
+builder.WebHost.UseUrls("http://0.0.0.0:5162");
+
 // Add services
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
@@ -141,7 +143,7 @@ if (app.Environment.IsDevelopment())
     });
 }
 
-app.UseHttpsRedirection();
+//app.UseHttpsRedirection();
 app.UseCors("MobileApp");
 app.UseAuthentication();
 app.UseAuthorization();

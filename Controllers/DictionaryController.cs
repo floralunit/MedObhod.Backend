@@ -2,6 +2,7 @@
 using MedObhod.Backend.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 namespace MedObhod.Backend.Controllers;
 
@@ -331,6 +332,26 @@ public class DictionaryController : ControllerBase
         {
             _logger.LogError(ex, "Error deleting template {Id}", id);
             return StatusCode(500, BaseResponse<bool>.Error("Internal server error", 500));
+        }
+    }
+
+    /// <summary>
+    /// Получить все диагнозы
+    /// </summary>
+    [HttpGet("diagnoses")]
+    [AllowAnonymous]
+    [ProducesResponseType(typeof(BaseResponse<List<DiagnosisDto>>), 200)]
+    public async Task<IActionResult> GetAllDiagnoses()
+    {
+        try
+        {
+            var diagnoses = await _dictionaryService.GetAllDiagnosesAsync();
+            return Ok(BaseResponse<List<DiagnosisDto>>.Ok(diagnoses));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting all templates");
+            return StatusCode(500, BaseResponse<List<AppointmentTemplateResponseDto>>.Error("Internal server error", 500));
         }
     }
 }

@@ -85,3 +85,10 @@ public class DictionarySyncResponse
     public List<AppointmentTemplateResponseDto> Templates { get; set; } = new();
     public bool HasChanges { get; set; }
 }
+
+public class DiagnosisDto
+{
+    public Guid Id { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public string Code { get; set; } = string.Empty;
+}
