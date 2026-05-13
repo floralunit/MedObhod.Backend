@@ -35,21 +35,12 @@ public partial class DoctorNote
 
     public string? MentalStatus { get; set; }
 
-    public double? Temperature { get; set; }
-
-    public int? Pulse { get; set; }
-
-    [Column("BP")]
-    [StringLength(20)]
-    public string? Bp { get; set; }
-
-    public int? RespiratoryRate { get; set; }
-
     public string? ExaminationSummary { get; set; }
 
     public string? TreatmentEffectiveness { get; set; }
 
     public string? PlanNote { get; set; }
+    public string? Notes { get; set; }
 
     [ForeignKey("DoctorId")]
     [InverseProperty("DoctorNotes")]

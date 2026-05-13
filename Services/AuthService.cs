@@ -87,7 +87,7 @@ public class AuthService : IAuthService
 
         // Обновляем версию пользователя при каждом входе
         user.Version++;
-        user.UpdatedDt = DateTime.UtcNow;
+        user.UpdatedDt = DateTime.Now;
         await _context.SaveChangesAsync();
 
         var permissions = GetUserPermissions(user.Role);
@@ -100,8 +100,8 @@ public class AuthService : IAuthService
             Role = user.Role,
             AccessToken = accessToken,
             RefreshToken = refreshToken,
-            AccessTokenExpiresAt = DateTime.UtcNow.AddHours(24),
-            RefreshTokenExpiresAt = DateTime.UtcNow.AddDays(30),
+            AccessTokenExpiresAt = DateTime.Now.AddHours(24),
+            RefreshTokenExpiresAt = DateTime.Now.AddDays(30),
             UserVersion = user.Version,
             Permissions = permissions
         };
@@ -114,7 +114,7 @@ public class AuthService : IAuthService
             .Include(s => s.User)
             .FirstOrDefaultAsync(s => s.RefreshToken == request.RefreshToken &&
                                       s.IsActive &&
-                                      s.ExpiresAt > DateTime.UtcNow);
+                                      s.ExpiresAt > DateTime.Now);
 
         if (session == null)
         {
@@ -139,17 +139,17 @@ public class AuthService : IAuthService
 
         // Обновляем refresh token в сессии
         session.RefreshToken = newRefreshToken;
-        session.LastActivity = DateTime.UtcNow;
-        session.ExpiresAt = DateTime.UtcNow.AddDays(30);
+        session.LastActivity = DateTime.Now;
+        session.ExpiresAt = DateTime.Now.AddDays(30);
 
         await _context.SaveChangesAsync();
 
         return new RefreshTokenResponse
         {
             AccessToken = newAccessToken,
-            AccessTokenExpiresAt = DateTime.UtcNow.AddHours(24),
+            AccessTokenExpiresAt = DateTime.Now.AddHours(24),
             RefreshToken = newRefreshToken,
-            RefreshTokenExpiresAt = DateTime.UtcNow.AddDays(30)
+            RefreshTokenExpiresAt = DateTime.Now.AddDays(30)
         };
     }
 
@@ -169,7 +169,7 @@ public class AuthService : IAuthService
         }
 
         user.PasswordHash = HashPassword(request.NewPassword);
-        user.UpdatedDt = DateTime.UtcNow;
+        user.UpdatedDt = DateTime.Now;
         user.Version++;
 
         await _context.SaveChangesAsync();
@@ -232,8 +232,8 @@ public class AuthService : IAuthService
             PasswordHash = HashPassword(request.Password),
             FullName = request.FullName,
             Role = request.Role,
-            CreatedDt = DateTime.UtcNow,
-            UpdatedDt = DateTime.UtcNow,
+            CreatedDt = DateTime.Now,
+            UpdatedDt = DateTime.Now,
             IsDeleted = false,
             Version = 1
         };
@@ -257,20 +257,23 @@ public class AuthService : IAuthService
     public async Task<bool> UpdateUserRoleAsync(Guid userId, string newRole, Guid updatedBy)
     {
         var user = await _context.Users.FindAsync(userId);
-
         if (user == null || user.IsDeleted) return false;
 
         user.Role = newRole;
-        user.UpdatedDt = DateTime.UtcNow;
+        user.UpdatedDt = DateTime.Now;
         user.Version++;
 
+        // Отзываем все сессии пользователя
+        var sessions = await _context.UserSessions
+            .Where(s => s.UserId == userId && s.IsActive)
+            .ToListAsync();
+
+        foreach (var session in sessions)
+        {
+            session.IsActive = false;
+        }
+
         await _context.SaveChangesAsync();
-
-        // Отзываем все сессии пользователя, чтобы он перелогинился
-        await _tokenService.RevokeAllUserTokensAsync(userId);
-
-        _logger.LogInformation("User role updated: {UserId} to {NewRole} by {UpdatedBy}", userId, newRole, updatedBy);
-
         return true;
     }
 
@@ -281,7 +284,7 @@ public class AuthService : IAuthService
         if (user == null || user.IsDeleted) return false;
 
         user.IsDeleted = true;
-        user.UpdatedDt = DateTime.UtcNow;
+        user.UpdatedDt = DateTime.Now;
         user.Version++;
 
         await _context.SaveChangesAsync();

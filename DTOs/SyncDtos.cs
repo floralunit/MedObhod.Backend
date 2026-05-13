@@ -58,9 +58,8 @@ public class HospitalizationSyncDto
 
 public class VitalSignSyncDto
 {
-    public Guid? Id { get; set; }
+    public Guid Id { get; set; }
     public Guid HospitalizationId { get; set; }
-    public DateTime MeasuredDt { get; set; }
     public double? Temperature { get; set; }
     public int? Pulse { get; set; }
     public int? SystolicBP { get; set; }
@@ -68,8 +67,11 @@ public class VitalSignSyncDto
     public int? SpO2 { get; set; }
     public int? RespiratoryRate { get; set; }
     public int? NEWSScore { get; set; }
-    public Guid InsUserId { get; set; }
+    public Guid? InsUserId { get; set; }
     public long Version { get; set; }
+    public DateTime? CreatedDt { get; set; }
+    public DateTime? UpdatedDt { get; set; }
+    public bool IsDeleted { get; set; }
 }
 
 public class AppointmentSyncDto
@@ -87,23 +89,6 @@ public class AppointmentSyncDto
     public string Status { get; set; } = string.Empty;
     public long Version { get; set; }
     public DateTime? UpdatedDt { get; set; }
-}
-
-public class DoctorNoteSyncDto
-{
-    public Guid? Id { get; set; }
-    public Guid HospitalizationId { get; set; }
-    public Guid DoctorId { get; set; }
-    public string? Complaints { get; set; }
-    public string? GeneralCondition { get; set; }
-    public string? MentalStatus { get; set; }
-    public double? Temperature { get; set; }
-    public int? Pulse { get; set; }
-    public int? RespiratoryRate { get; set; }
-    public string? ExaminationSummary { get; set; }
-    public string? TreatmentEffectiveness { get; set; }
-    public string? PlanNote { get; set; }
-    public long Version { get; set; }
 }
 
 public class UserSyncDto
@@ -131,4 +116,71 @@ public class PatientDiagnosisSyncDto
     public bool IsPrimary { get; set; }
     public long Version { get; set; }
     public DateTime? UpdatedDt { get; set; }
+}
+
+public class DoctorNoteSyncDto
+{
+    public Guid Id { get; set; }
+    public Guid HospitalizationId { get; set; }
+    public Guid DoctorId { get; set; }
+    public string? Complaints { get; set; }
+    public string? GeneralCondition { get; set; }
+    public string? MentalStatus { get; set; }
+    public double? Temperature { get; set; }
+    public int? Pulse { get; set; }
+    public string? BP { get; set; }
+    public int? RespiratoryRate { get; set; }
+    public string? ExaminationSummary { get; set; }
+    public string? TreatmentEffectiveness { get; set; }
+    public string? PlanNote { get; set; }
+    public long Version { get; set; }
+    public DateTime? UpdatedDt { get; set; }
+    public bool IsDeleted { get; set; }
+}
+
+public class CreateVitalSignRequest
+{
+    public Guid HospitalizationId { get; set; }
+    public DateTime CreatedDt { get; set; }
+    public double? Temperature { get; set; }
+    public int? Pulse { get; set; }
+    public int? SystolicBP { get; set; }
+    public int? DiastolicBP { get; set; }
+    public int? SpO2 { get; set; }
+    public int? RespiratoryRate { get; set; }
+}
+
+public class CreateDoctorNoteRequest
+{
+    public Guid HospitalizationId { get; set; }
+    public string? Complaints { get; set; }
+    public string? ExaminationSummary { get; set; }
+    public string? TreatmentEffectiveness { get; set; }
+    public string? Notes { get; set; }
+}
+
+public class CompleteDoctorRoundRequest
+{
+    public Guid DoctorId { get; set; }
+    public DateTime StartTime { get; set; }
+    public DateTime EndTime { get; set; }
+    public string Status { get; set; } = "completed";
+
+    public List<CompleteDoctorRoundItemRequest> Items { get; set; }
+        = new();
+}
+
+public class CompleteDoctorRoundItemRequest
+{
+    public Guid HospitalizationId { get; set; }
+
+    public int OrderIndex { get; set; }
+
+    public DateTime? PlannedTime { get; set; }
+
+    public DateTime? StartVisitTime { get; set; }
+
+    public DateTime? EndVisitTime { get; set; }
+
+    public string Status { get; set; } = "pending";
 }

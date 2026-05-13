@@ -13,10 +13,10 @@ public partial class DoctorRoundItem
     public Guid DoctorRoundItemId { get; set; }
 
     [Column("Round_ID")]
-    public Guid? RoundId { get; set; }
+    public Guid RoundId { get; set; }
 
     [Column("Hospitalization_ID")]
-    public Guid? HospitalizationId { get; set; }
+    public Guid HospitalizationId { get; set; }
 
     public int? OrderIndex { get; set; }
 

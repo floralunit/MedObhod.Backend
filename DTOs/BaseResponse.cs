@@ -6,7 +6,7 @@ public class BaseResponse<T>
     public string Message { get; set; } = string.Empty;
     public T? Data { get; set; }
     public int StatusCode { get; set; }
-    public DateTime Timestamp { get; set; } = DateTime.UtcNow;
+    public DateTime Timestamp { get; set; } = DateTime.Now;
 
     public static BaseResponse<T> Ok(T data, string message = "Success")
     {

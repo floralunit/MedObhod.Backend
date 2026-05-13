@@ -30,7 +30,7 @@ public class TokenService : ITokenService
             new Claim(ClaimTypes.Name, login),
             new Claim(ClaimTypes.Role, role),
             new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
-            new Claim(JwtRegisteredClaimNames.Iat, DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString())
+            new Claim(JwtRegisteredClaimNames.Iat, DateTimeOffset.Now.ToUnixTimeSeconds().ToString())
         };
 
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_configuration["Jwt:Key"]!));
@@ -40,7 +40,7 @@ public class TokenService : ITokenService
             issuer: _configuration["Jwt:Issuer"],
             audience: _configuration["Jwt:Audience"],
             claims: claims,
-            expires: DateTime.UtcNow.AddHours(24), // Токен живёт 24 часа
+            expires: DateTime.Now.AddHours(24), // Токен живёт 24 часа
             signingCredentials: credentials
         );
 
@@ -65,10 +65,10 @@ public class TokenService : ITokenService
             DeviceId = deviceId,
             DeviceName = deviceName,
             IpAddress = ipAddress,
-            LoginTime = DateTime.UtcNow,
-            LastActivity = DateTime.UtcNow,
+            LoginTime = DateTime.Now,
+            LastActivity = DateTime.Now,
             IsActive = true,
-            ExpiresAt = DateTime.UtcNow.AddDays(30)
+            ExpiresAt = DateTime.Now.AddDays(30)
         };
 
         _context.UserSessions.Add(userSession);
@@ -82,11 +82,11 @@ public class TokenService : ITokenService
                                       s.UserId == userId &&
                                       s.DeviceId == deviceId &&
                                       s.IsActive &&
-                                      s.ExpiresAt > DateTime.UtcNow);
+                                      s.ExpiresAt > DateTime.Now);
 
         if (session != null)
         {
-            session.LastActivity = DateTime.UtcNow;
+            session.LastActivity = DateTime.Now;
             await _context.SaveChangesAsync();
             return true;
         }

@@ -13,7 +13,7 @@ public partial class DoctorRound
     public Guid DoctorRoundId { get; set; }
 
     [Column("Doctor_ID")]
-    public Guid? DoctorId { get; set; }
+    public Guid DoctorId { get; set; }
 
     public DateTime? StartTime { get; set; }
 

@@ -15,8 +15,6 @@ public partial class VitalSign
     [Column("Hospitalization_ID")]
     public Guid HospitalizationId { get; set; }
 
-    public DateTime MeasuredDt { get; set; }
-
     public double? Temperature { get; set; }
 
     public int? Pulse { get; set; }

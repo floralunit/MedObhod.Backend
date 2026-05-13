@@ -30,7 +30,7 @@ public class DictionaryService : IDictionaryService
         {
             MedicationsVersion = medicationsVersion,
             TemplatesVersion = templatesVersion,
-            LastUpdated = DateTime.UtcNow
+            LastUpdated = DateTime.Now
         };
     }
 
@@ -152,8 +152,8 @@ public class DictionaryService : IDictionaryService
             Form = dto.Form,
             DefaultDosage = dto.DefaultDosage,
             Category = dto.Category,
-            CreatedDt = DateTime.UtcNow,
-            UpdatedDt = DateTime.UtcNow,
+            CreatedDt = DateTime.Now,
+            UpdatedDt = DateTime.Now,
             IsDeleted = false,
             Version = 1
         };
@@ -187,7 +187,7 @@ public class DictionaryService : IDictionaryService
         medication.Form = dto.Form;
         medication.DefaultDosage = dto.DefaultDosage;
         medication.Category = dto.Category;
-        medication.UpdatedDt = DateTime.UtcNow;
+        medication.UpdatedDt = DateTime.Now;
         medication.Version++;
 
         await _context.SaveChangesAsync();
@@ -215,7 +215,7 @@ public class DictionaryService : IDictionaryService
         if (medication == null) return false;
 
         medication.IsDeleted = true;
-        medication.UpdatedDt = DateTime.UtcNow;
+        medication.UpdatedDt = DateTime.Now;
         medication.Version++;
 
         await _context.SaveChangesAsync();
@@ -273,8 +273,8 @@ public class DictionaryService : IDictionaryService
             Type = dto.Type,
             DurationMin = dto.DurationMin,
             RequiresMedication = dto.RequiresMedication,
-            CreatedDt = DateTime.UtcNow,
-            UpdatedDt = DateTime.UtcNow,
+            CreatedDt = DateTime.Now,
+            UpdatedDt = DateTime.Now,
             IsDeleted = false,
             Version = 1
         };
@@ -308,7 +308,7 @@ public class DictionaryService : IDictionaryService
         template.Type = dto.Type;
         template.DurationMin = dto.DurationMin;
         template.RequiresMedication = dto.RequiresMedication;
-        template.UpdatedDt = DateTime.UtcNow;
+        template.UpdatedDt = DateTime.Now;
         template.Version++;
 
         await _context.SaveChangesAsync();
@@ -336,7 +336,7 @@ public class DictionaryService : IDictionaryService
         if (template == null) return false;
 
         template.IsDeleted = true;
-        template.UpdatedDt = DateTime.UtcNow;
+        template.UpdatedDt = DateTime.Now;
         template.Version++;
 
         await _context.SaveChangesAsync();

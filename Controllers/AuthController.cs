@@ -35,15 +35,15 @@ public class AuthController : ControllerBase
 
             if (result == null)
             {
-                return Unauthorized(BaseResponse<object>.Error("Invalid login or password", 401));
+                return Unauthorized(BaseResponse<object>.Error("Неверный логин и/или пароль", 401));
             }
 
-            return Ok(BaseResponse<LoginResponse>.Ok(result, "Login successful"));
+            return Ok(BaseResponse<LoginResponse>.Ok(result, "Успешная авторизация"));
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Login error for {Login}", request.Login);
-            return StatusCode(500, BaseResponse<object>.Error("Internal server error", 500));
+            return StatusCode(500, BaseResponse<object>.Error("Внутренняя ошибка сервера", 500));
         }
     }
 

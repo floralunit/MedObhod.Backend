@@ -22,7 +22,7 @@ public class DataSyncService : IDataSyncService
         var response = new SyncResponse
         {
             Success = true,
-            ServerTime = DateTime.UtcNow,
+            ServerTime = DateTime.Now,
             IdMapping = new Dictionary<Guid, Guid>()
         };
 
@@ -75,8 +75,8 @@ public class DataSyncService : IDataSyncService
                             var note = JsonSerializer.Deserialize<DoctorNoteSyncDto>(change.Data);
                             if (note != null)
                             {
-                                var serverId = await UpsertDoctorNoteAsync(note);
-                                response.IdMapping[change.LocalId] = serverId;
+                                //var serverId = await UpsertDoctorNoteAsync(note);
+                                //response.IdMapping[change.LocalId] = serverId;
                             }
                             break;
 
@@ -127,7 +127,7 @@ public class DataSyncService : IDataSyncService
                 Operation = patient.Id.HasValue ? "UPDATE" : "INSERT",
                 ServerId = patient.Id,
                 Data = JsonSerializer.Serialize(patient),
-                ChangedAt = patient.UpdatedDt ?? DateTime.UtcNow
+                ChangedAt = patient.UpdatedDt ?? DateTime.Now
             });
         }
 
@@ -141,7 +141,7 @@ public class DataSyncService : IDataSyncService
                 Operation = hospitalization.Id.HasValue ? "UPDATE" : "INSERT",
                 ServerId = hospitalization.Id,
                 Data = JsonSerializer.Serialize(hospitalization),
-                ChangedAt = hospitalization.UpdatedDt ?? DateTime.UtcNow
+                ChangedAt = hospitalization.UpdatedDt ?? DateTime.Now
             });
         }
 
@@ -151,11 +151,11 @@ public class DataSyncService : IDataSyncService
         {
             changes.Add(new SyncChangeItem
             {
-                EntityName = "VitalSign",
-                Operation = vital.Id.HasValue ? "UPDATE" : "INSERT",
-                ServerId = vital.Id,
-                Data = JsonSerializer.Serialize(vital),
-                ChangedAt = vital.MeasuredDt
+                //EntityName = "VitalSign",
+                //Operation = vital.Id.HasValue ? "UPDATE" : "INSERT",
+                //ServerId = vital.Id,
+                //Data = JsonSerializer.Serialize(vital),
+                //ChangedAt = vital.CreatedDt
             });
         }
 
@@ -169,7 +169,7 @@ public class DataSyncService : IDataSyncService
                 Operation = appointment.Id.HasValue ? "UPDATE" : "INSERT",
                 ServerId = appointment.Id,
                 Data = JsonSerializer.Serialize(appointment),
-                ChangedAt = appointment.UpdatedDt ?? DateTime.UtcNow
+                ChangedAt = appointment.UpdatedDt ?? DateTime.Now
             });
         }
 
@@ -237,16 +237,16 @@ public class DataSyncService : IDataSyncService
 
         if (since.HasValue)
         {
-            query = query.Where(v => v.MeasuredDt > since.Value);
+            query = query.Where(v => v.CreatedDt > since.Value);
         }
 
         return await query
-            .OrderByDescending(v => v.MeasuredDt)
+            .OrderByDescending(v => v.CreatedDt)
             .Select(v => new VitalSignSyncDto
             {
                 Id = v.VitalSignId,
                 HospitalizationId = v.HospitalizationId,
-                MeasuredDt = v.MeasuredDt,
+                CreatedDt = v.CreatedDt,
                 Temperature = v.Temperature,
                 Pulse = v.Pulse,
                 SpO2 = v.SpO2,
@@ -255,6 +255,87 @@ public class DataSyncService : IDataSyncService
                 Version = v.Version
             })
             .ToListAsync();
+    }
+    public async Task<Guid> CreateVitalSignAsync(CreateVitalSignRequest request, Guid userId)
+    {
+        var newsScore = CalculateNEWSScore(request);
+
+        var vitalSign = new VitalSign
+        {
+            VitalSignId = Guid.NewGuid(),
+            HospitalizationId = request.HospitalizationId,
+            CreatedDt = DateTime.Now,
+            Temperature = request.Temperature,
+            Pulse = request.Pulse,
+            SystolicBp = request.SystolicBP,
+            DiastolicBp = request.DiastolicBP,
+            SpO2 = request.SpO2,
+            RespiratoryRate = request.RespiratoryRate,
+            Newsscore = newsScore,
+            InsUserId = userId,
+            UpdatedDt = DateTime.Now,
+            IsDeleted = false,
+            Version = 1
+        };
+
+        _context.VitalSigns.Add(vitalSign);
+
+        // Обновляем статус госпитализации
+        var hospitalization = await _context.Hospitalizations
+            .FirstOrDefaultAsync(h => h.HospitalizationId == request.HospitalizationId);
+
+        if (hospitalization != null)
+        {
+            if (newsScore >= 7)
+                hospitalization.Status = "critical";
+            else if (newsScore >= 5)
+                hospitalization.Status = "warning";
+            else
+                hospitalization.Status = "stable";
+
+            hospitalization.UpdatedDt = DateTime.Now;
+            hospitalization.Version++;
+        }
+
+        await _context.SaveChangesAsync();
+
+        return vitalSign.VitalSignId;
+    }
+
+    private int CalculateNEWSScore(CreateVitalSignRequest vital)
+    {
+        int score = 0;
+
+        if (vital.Temperature <= 35.0) score += 3;
+        else if (vital.Temperature < 36.0) score += 1;
+        else if (vital.Temperature <= 38.0) score += 0;
+        else if (vital.Temperature <= 39.0) score += 1;
+        else score += 2;
+
+        if (vital.Pulse <= 40) score += 3;
+        else if (vital.Pulse <= 50) score += 1;
+        else if (vital.Pulse <= 90) score += 0;
+        else if (vital.Pulse <= 110) score += 1;
+        else if (vital.Pulse <= 130) score += 2;
+        else score += 3;
+
+        if (vital.SpO2 <= 91) score += 3;
+        else if (vital.SpO2 <= 93) score += 2;
+        else if (vital.SpO2 <= 95) score += 1;
+
+        if (vital.RespiratoryRate <= 8) score += 3;
+        else if (vital.RespiratoryRate <= 11) score += 1;
+        else if (vital.RespiratoryRate <= 20) score += 0;
+        else if (vital.RespiratoryRate <= 24) score += 2;
+        else score += 3;
+
+        if (vital.SystolicBP <= 90) score += 3;
+        else if (vital.SystolicBP <= 100) score += 2;
+        else if (vital.SystolicBP <= 110) score += 1;
+        else if (vital.SystolicBP <= 219) score += 0;
+        else score += 2;
+
+        return score;
     }
 
     public async Task<List<AppointmentSyncDto>> GetChangedAppointmentsAsync(DateTime? since)
@@ -288,37 +369,6 @@ public class DataSyncService : IDataSyncService
             .ToListAsync();
     }
 
-    public async Task<List<DoctorNoteSyncDto>> GetChangedDoctorNotesAsync(DateTime? since)
-    {
-        var query = _context.DoctorNotes
-            .Where(n => !n.IsDeleted)
-            .AsQueryable();
-
-        if (since.HasValue)
-        {
-            query = query.Where(n => n.UpdatedDt > since.Value || n.CreatedDt > since.Value);
-        }
-
-        return await query
-            .Select(n => new DoctorNoteSyncDto
-            {
-                Id = n.DoctorNoteId,
-                HospitalizationId = n.HospitalizationId,
-                DoctorId = n.DoctorId,
-                Complaints = n.Complaints,
-                GeneralCondition = n.GeneralCondition,
-                MentalStatus = n.MentalStatus,
-                Temperature = n.Temperature,
-                Pulse = n.Pulse,
-                RespiratoryRate = n.RespiratoryRate,
-                ExaminationSummary = n.ExaminationSummary,
-                TreatmentEffectiveness = n.TreatmentEffectiveness,
-                PlanNote = n.PlanNote,
-                Version = n.Version
-            })
-            .ToListAsync();
-    }
-
     public async Task<Guid> UpsertPatientAsync(PatientSyncDto patient, Guid clientId)
     {
         var existing = await _context.Patients
@@ -333,8 +383,8 @@ public class DataSyncService : IDataSyncService
                 FullName = patient.FullName,
                 BirthDt = patient.BirthDt,
                 Gender = patient.Gender,
-                CreatedDt = DateTime.UtcNow,
-                UpdatedDt = DateTime.UtcNow,
+                CreatedDt = DateTime.Now,
+                UpdatedDt = DateTime.Now,
                 IsDeleted = false,
                 Version = 1
             };
@@ -349,7 +399,7 @@ public class DataSyncService : IDataSyncService
                 existing.FullName = patient.FullName;
                 existing.BirthDt = patient.BirthDt;
                 existing.Gender = patient.Gender;
-                existing.UpdatedDt = DateTime.UtcNow;
+                existing.UpdatedDt = DateTime.Now;
                 existing.Version++;
             }
             return existing.PatientId;
@@ -373,8 +423,8 @@ public class DataSyncService : IDataSyncService
                 Bed = hospitalization.Bed,
                 AttendingDoctorId = hospitalization.AttendingDoctorId,
                 Status = hospitalization.Status,
-                CreatedDt = DateTime.UtcNow,
-                UpdatedDt = DateTime.UtcNow,
+                CreatedDt = DateTime.Now,
+                UpdatedDt = DateTime.Now,
                 IsDeleted = false,
                 Version = 1
             };
@@ -389,7 +439,7 @@ public class DataSyncService : IDataSyncService
                 existing.Room = hospitalization.Room;
                 existing.Bed = hospitalization.Bed;
                 existing.Status = hospitalization.Status;
-                existing.UpdatedDt = DateTime.UtcNow;
+                existing.UpdatedDt = DateTime.Now;
                 existing.Version++;
             }
             return existing.HospitalizationId;
@@ -405,18 +455,17 @@ public class DataSyncService : IDataSyncService
         {
             var newVitalSign = new VitalSign
             {
-                VitalSignId = vitalSign.Id ?? Guid.NewGuid(),
-                HospitalizationId = vitalSign.HospitalizationId,
-                MeasuredDt = vitalSign.MeasuredDt,
-                Temperature = vitalSign.Temperature,
-                Pulse = vitalSign.Pulse,
-                SpO2 = vitalSign.SpO2,
-                RespiratoryRate = vitalSign.RespiratoryRate,
-                InsUserId = vitalSign.InsUserId,
-                CreatedDt = DateTime.UtcNow,
-                UpdatedDt = DateTime.UtcNow,
-                IsDeleted = false,
-                Version = 1
+                //VitalSignId = vitalSign.Id ?? Guid.NewGuid(),
+                //HospitalizationId = vitalSign.HospitalizationId,
+                //CreatedDt = vitalSign.CreatedDt,
+                //Temperature = vitalSign.Temperature,
+                //Pulse = vitalSign.Pulse,
+                //SpO2 = vitalSign.SpO2,
+                //RespiratoryRate = vitalSign.RespiratoryRate,
+                //InsUserId = vitalSign.InsUserId,
+                //UpdatedDt = DateTime.Now,
+                //IsDeleted = false,
+                //Version = 1
             };
             _context.VitalSigns.Add(newVitalSign);
             return newVitalSign.VitalSignId;
@@ -444,8 +493,8 @@ public class DataSyncService : IDataSyncService
                 Instructions = appointment.Instructions,
                 Notes = appointment.Notes,
                 Status = appointment.Status,
-                CreatedDt = DateTime.UtcNow,
-                UpdatedDt = DateTime.UtcNow,
+                CreatedDt = DateTime.Now,
+                UpdatedDt = DateTime.Now,
                 IsDeleted = false,
                 Version = 1
             };
@@ -457,54 +506,10 @@ public class DataSyncService : IDataSyncService
             if (appointment.Version > existing.Version)
             {
                 existing.Status = appointment.Status;
-                existing.UpdatedDt = DateTime.UtcNow;
+                existing.UpdatedDt = DateTime.Now;
                 existing.Version++;
             }
             return existing.AppointmentId;
-        }
-    }
-
-    public async Task<Guid> UpsertDoctorNoteAsync(DoctorNoteSyncDto note)
-    {
-        var existing = await _context.DoctorNotes
-            .FirstOrDefaultAsync(n => n.DoctorNoteId == note.Id);
-
-        if (existing == null)
-        {
-            var newNote = new DoctorNote
-            {
-                DoctorNoteId = note.Id ?? Guid.NewGuid(),
-                HospitalizationId = note.HospitalizationId,
-                DoctorId = note.DoctorId,
-                Complaints = note.Complaints,
-                GeneralCondition = note.GeneralCondition,
-                MentalStatus = note.MentalStatus,
-                Temperature = note.Temperature,
-                Pulse = note.Pulse,
-                RespiratoryRate = note.RespiratoryRate,
-                ExaminationSummary = note.ExaminationSummary,
-                TreatmentEffectiveness = note.TreatmentEffectiveness,
-                PlanNote = note.PlanNote,
-                CreatedDt = DateTime.UtcNow,
-                UpdatedDt = DateTime.UtcNow,
-                IsDeleted = false,
-                Version = 1
-            };
-            _context.DoctorNotes.Add(newNote);
-            return newNote.DoctorNoteId;
-        }
-        else
-        {
-            if (note.Version > existing.Version)
-            {
-                existing.Complaints = note.Complaints;
-                existing.GeneralCondition = note.GeneralCondition;
-                existing.ExaminationSummary = note.ExaminationSummary;
-                existing.PlanNote = note.PlanNote;
-                existing.UpdatedDt = DateTime.UtcNow;
-                existing.Version++;
-            }
-            return existing.DoctorNoteId;
         }
     }
 
@@ -517,7 +522,7 @@ public class DataSyncService : IDataSyncService
                 if (patient != null)
                 {
                     patient.IsDeleted = true;
-                    patient.UpdatedDt = DateTime.UtcNow;
+                    patient.UpdatedDt = DateTime.Now;
                     patient.Version++;
                     return true;
                 }
@@ -528,7 +533,7 @@ public class DataSyncService : IDataSyncService
                 if (appointment != null)
                 {
                     appointment.IsDeleted = true;
-                    appointment.UpdatedDt = DateTime.UtcNow;
+                    appointment.UpdatedDt = DateTime.Now;
                     appointment.Version++;
                     return true;
                 }
@@ -559,12 +564,9 @@ public class DataSyncService : IDataSyncService
             })
             .ToListAsync();
     }
-
     public async Task<List<VitalSignSyncDto>> GetChangedVitalSignsAsync(Guid? hospitalizationId, DateTime? since)
     {
-        var query = _context.VitalSigns
-            .Where(v => !v.IsDeleted)
-            .AsQueryable();
+        var query = _context.VitalSigns.AsQueryable();
 
         if (hospitalizationId.HasValue)
         {
@@ -573,16 +575,15 @@ public class DataSyncService : IDataSyncService
 
         if (since.HasValue)
         {
-            query = query.Where(v => v.MeasuredDt > since.Value);
+            query = query.Where(v => v.UpdatedDt > since.Value || v.CreatedDt > since.Value);
         }
 
         return await query
-            .OrderByDescending(v => v.MeasuredDt)
+            .OrderByDescending(v => v.CreatedDt)
             .Select(v => new VitalSignSyncDto
             {
                 Id = v.VitalSignId,
                 HospitalizationId = v.HospitalizationId,
-                MeasuredDt = v.MeasuredDt,
                 Temperature = v.Temperature,
                 Pulse = v.Pulse,
                 SystolicBP = v.SystolicBp,
@@ -591,7 +592,10 @@ public class DataSyncService : IDataSyncService
                 RespiratoryRate = v.RespiratoryRate,
                 NEWSScore = v.Newsscore,
                 InsUserId = v.InsUserId,
-                Version = v.Version
+                Version = v.Version,
+                CreatedDt = v.CreatedDt,
+                UpdatedDt = v.UpdatedDt,
+                IsDeleted = v.IsDeleted
             })
             .ToListAsync();
     }
@@ -640,7 +644,7 @@ public class DataSyncService : IDataSyncService
         if (appointment == null) return false;
 
         appointment.Status = status;
-        appointment.UpdatedDt = DateTime.UtcNow;
+        appointment.UpdatedDt = DateTime.Now;
         appointment.Version++;
 
         if (status == "completed" && completedBy.HasValue)
@@ -650,11 +654,11 @@ public class DataSyncService : IDataSyncService
             {
                 AppointmentExecutionId = Guid.NewGuid(),
                 AppointmentId = appointmentId,
-                ExecutedAt = DateTime.UtcNow,
+                ExecutedAt = DateTime.Now,
                 ExecutedUserId = completedBy.Value,
                 Status = status,
-                CreatedDt = DateTime.UtcNow,
-                UpdatedDt = DateTime.UtcNow,
+                CreatedDt = DateTime.Now,
+                UpdatedDt = DateTime.Now,
                 IsDeleted = false,
                 Version = 1
             };
@@ -702,8 +706,8 @@ public class DataSyncService : IDataSyncService
                 HospitalizationId = dto.HospitalizationId,
                 DiagnosisId = dto.DiagnosisId,
                 IsPrimary = dto.IsPrimary,
-                CreatedDt = DateTime.UtcNow,
-                UpdatedDt = DateTime.UtcNow,
+                CreatedDt = DateTime.Now,
+                UpdatedDt = DateTime.Now,
                 IsDeleted = false,
                 Version = 1
             };
@@ -715,10 +719,133 @@ public class DataSyncService : IDataSyncService
             if (dto.Version > existing.Version)
             {
                 existing.IsPrimary = dto.IsPrimary;
-                existing.UpdatedDt = DateTime.UtcNow;
+                existing.UpdatedDt = DateTime.Now;
                 existing.Version++;
             }
             return existing.PatientDiagnoseId;
+        }
+    }
+
+    public async Task<List<DoctorNoteSyncDto>> GetChangedDoctorNotesAsync(DateTime? since)
+    {
+        var query = _context.DoctorNotes
+            //.Where(n => !n.IsDeleted)
+            .AsQueryable();
+
+        if (since.HasValue)
+        {
+            query = query.Where(n => n.UpdatedDt > since.Value || n.CreatedDt > since.Value);
+        }
+
+        return await query
+            .Select(n => new DoctorNoteSyncDto
+            {
+                Id = n.DoctorNoteId,
+                HospitalizationId = n.HospitalizationId,
+                DoctorId = n.DoctorId,
+                Complaints = n.Complaints,
+                GeneralCondition = n.GeneralCondition,
+                MentalStatus = n.MentalStatus,
+                ExaminationSummary = n.ExaminationSummary,
+                TreatmentEffectiveness = n.TreatmentEffectiveness,
+                PlanNote = n.PlanNote,
+                Version = n.Version,
+                UpdatedDt = n.UpdatedDt,
+                IsDeleted = n.IsDeleted
+            })
+            .ToListAsync();
+    }
+
+
+
+    public async Task<Guid> CreateDoctorNoteAsync(CreateDoctorNoteRequest request, Guid doctorId)
+    {
+        var noteId = Guid.NewGuid();
+
+        var doctorNote = new DoctorNote
+        {
+            DoctorNoteId = noteId,
+            HospitalizationId = request.HospitalizationId,
+            DoctorId = doctorId,
+            Complaints = request.Complaints,
+            ExaminationSummary = request.ExaminationSummary,
+            TreatmentEffectiveness = request.TreatmentEffectiveness,
+            //PlanNote = request.PlanNote,
+            Notes = request.Notes,
+            CreatedDt = DateTime.Now,
+            UpdatedDt = DateTime.Now,
+            IsDeleted = false,
+            Version = 1
+        };
+
+        _context.DoctorNotes.Add(doctorNote);
+        await _context.SaveChangesAsync();
+
+        return noteId;
+    }
+
+    public async Task<Guid> CompleteRoundAsync(
+      CompleteDoctorRoundRequest request)
+    {
+        await using var transaction =
+            await _context.Database.BeginTransactionAsync();
+
+        try
+        {
+            var round = new DoctorRound
+            {
+                DoctorRoundId = Guid.NewGuid(),
+                DoctorId = request.DoctorId,
+                StartTime = request.StartTime,
+                EndTime = request.EndTime,
+                Status = "completed",
+                CreatedDt = DateTime.UtcNow,
+                UpdatedDt = DateTime.UtcNow,
+                IsDeleted = false,
+                Version = 1
+            };
+
+            _context.DoctorRounds.Add(round);
+
+            foreach (var item in request.Items)
+            {
+                var roundItem = new DoctorRoundItem
+                {
+                    DoctorRoundItemId = Guid.NewGuid(),
+                    RoundId = round.DoctorRoundId,
+                    HospitalizationId =
+                        item.HospitalizationId,
+
+                    OrderIndex = item.OrderIndex,
+                    PlannedTimeDt =
+                        item.PlannedTime,
+
+                    StartVisitTime =
+                        item.StartVisitTime,
+
+                    EndVisitTime =
+                        item.EndVisitTime,
+
+                    Status = item.Status,
+
+                    CreatedDt = DateTime.UtcNow,
+                    UpdatedDt = DateTime.UtcNow,
+                    IsDeleted = false,
+                    Version = 1
+                };
+
+                _context.DoctorRoundItems.Add(roundItem);
+            }
+
+            await _context.SaveChangesAsync();
+            await transaction.CommitAsync();
+
+            return round.DoctorRoundId;
+        }
+        catch
+        {
+            await transaction.RollbackAsync();
+            throw;
         }
     }
 }

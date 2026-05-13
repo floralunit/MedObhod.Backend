@@ -115,6 +115,27 @@ public class AppointmentsController : ControllerBase
             if (!ModelState.IsValid)
                 return BadRequest(BaseResponse<object>.Error("Invalid model state", 400));
 
+            // ПРОВЕРКА НА ДУБЛИКАТЫ
+            var existingAppointment = await _context.Appointments
+                .FirstOrDefaultAsync(a =>
+                    a.HospitalizationId == request.HospitalizationId &&
+                    a.Name == request.Name &&
+                    a.Type == request.Type &&
+                    !a.IsDeleted &&
+                    a.CreatedDt > DateTime.Now.AddMinutes(-5)); // В последние 5 минут
+
+            if (existingAppointment != null)
+            {
+                _logger.LogWarning("Duplicate appointment detected: {Name} for hospitalization {HospId}",
+                    request.Name, request.HospitalizationId);
+
+                // Возвращаем существующий ID вместо создания нового
+                return Ok(BaseResponse<object>.Ok(
+                    new { id = existingAppointment.AppointmentId },
+                    "Appointment already exists"));
+            }
+
+
             var userId = Guid.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value!);
 
             var appointment = new Appointment
@@ -130,8 +151,8 @@ public class AppointmentsController : ControllerBase
                 Instructions = request.Instructions,
                 Notes = request.Notes,
                 Status = "pending",
-                CreatedDt = DateTime.UtcNow,
-                UpdatedDt = DateTime.UtcNow,
+                CreatedDt = DateTime.Now,
+                UpdatedDt = DateTime.Now,
                 IsDeleted = false,
                 Version = 1
             };
@@ -151,8 +172,8 @@ public class AppointmentsController : ControllerBase
                     EndDt = string.IsNullOrEmpty(request.Schedule.EndDate) ? null : DateTime.Parse(request.Schedule.EndDate),
                     StartTime = TimeOnly.Parse(request.Schedule.StartTime),
                     RelationToMeal = request.Schedule.RelationToMeal,
-                    CreatedDt = DateTime.UtcNow,
-                    UpdatedDt = DateTime.UtcNow,
+                    CreatedDt = DateTime.Now,
+                    UpdatedDt = DateTime.Now,
                     IsDeleted = false,
                     Version = 1
                 };
@@ -169,8 +190,8 @@ public class AppointmentsController : ControllerBase
                             AppointmentTimeId = Guid.NewGuid(),
                             ScheduleId = schedule.AppointmentScheduleId,
                             TimeValue = TimeOnly.Parse(time),
-                            CreatedDt = DateTime.UtcNow,
-                            UpdatedDt = DateTime.UtcNow,
+                            CreatedDt = DateTime.Now,
+                            UpdatedDt = DateTime.Now,
                             IsDeleted = false,
                             Version = 1
                         };
@@ -191,8 +212,8 @@ public class AppointmentsController : ControllerBase
                     CustomName = request.Medication.CustomName,
                     Dosage = request.Medication.Dosage,
                     Form = request.Medication.Form,
-                    CreatedDt = DateTime.UtcNow,
-                    UpdatedDt = DateTime.UtcNow,
+                    CreatedDt = DateTime.Now,
+                    UpdatedDt = DateTime.Now,
                     IsDeleted = false,
                     Version = 1
                 };
@@ -229,7 +250,7 @@ public class AppointmentsController : ControllerBase
                 return NotFound(BaseResponse<object>.NotFound("Appointment not found"));
 
             appointment.Status = "completed";
-            appointment.UpdatedDt = DateTime.UtcNow;
+            appointment.UpdatedDt = DateTime.Now;
             appointment.Version++;
 
             // Добавляем запись о выполнении
@@ -237,11 +258,11 @@ public class AppointmentsController : ControllerBase
             {
                 AppointmentExecutionId = Guid.NewGuid(),
                 AppointmentId = appointmentId,
-                ExecutedAt = DateTime.UtcNow,
+                ExecutedAt = DateTime.Now,
                 ExecutedUserId = completedBy,
                 Status = "completed",
-                CreatedDt = DateTime.UtcNow,
-                UpdatedDt = DateTime.UtcNow,
+                CreatedDt = DateTime.Now,
+                UpdatedDt = DateTime.Now,
                 IsDeleted = false,
                 Version = 1
             };
@@ -277,7 +298,7 @@ public class AppointmentsController : ControllerBase
                 return NotFound(BaseResponse<object>.NotFound("Appointment not found"));
 
             appointment.Status = "cancelled";
-            appointment.UpdatedDt = DateTime.UtcNow;
+            appointment.UpdatedDt = DateTime.Now;
             appointment.Version++;
 
             await _context.SaveChangesAsync();
@@ -311,7 +332,7 @@ public class AppointmentsController : ControllerBase
                 return NotFound(BaseResponse<object>.NotFound("Appointment not found"));
 
             appointment.IsDeleted = true;
-            appointment.UpdatedDt = DateTime.UtcNow;
+            appointment.UpdatedDt = DateTime.Now;
             appointment.Version++;
 
             await _context.SaveChangesAsync();
@@ -338,7 +359,7 @@ public class AppointmentsController : ControllerBase
         try
         {
             var userId = Guid.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value!);
-            var today = DateTime.UtcNow.Date;
+            var today = DateTime.Now.Date;
             var tomorrow = today.AddDays(1);
 
             var appointments = await _context.Appointments
