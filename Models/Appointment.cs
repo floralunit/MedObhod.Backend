@@ -52,9 +52,6 @@ public partial class Appointment
     public virtual ICollection<AppointmentExecution> AppointmentExecutions { get; set; } = new List<AppointmentExecution>();
 
     [InverseProperty("Appointment")]
-    public virtual ICollection<AppointmentMedication> AppointmentMedications { get; set; } = new List<AppointmentMedication>();
-
-    [InverseProperty("Appointment")]
     public virtual ICollection<AppointmentSchedule> AppointmentSchedules { get; set; } = new List<AppointmentSchedule>();
 
     [ForeignKey("HospitalizationId")]

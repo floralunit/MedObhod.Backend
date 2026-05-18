@@ -2,7 +2,6 @@
 using MedObhod.Backend.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
 
 namespace MedObhod.Backend.Controllers;
@@ -19,26 +18,6 @@ public class SyncController : ControllerBase
     {
         _syncService = syncService;
         _logger = logger;
-    }
-
-    /// <summary>
-    /// Получить всех пользователей для синхронизации
-    /// </summary>
-    [HttpGet("users")]
-    [Authorize(Roles = "head")]
-    [ProducesResponseType(typeof(BaseResponse<List<UserSyncDto>>), 200)]
-    public async Task<IActionResult> GetUsersForSync([FromQuery] DateTime? since)
-    {
-        try
-        {
-            var users = await _syncService.GetUsersForSyncAsync(since);
-            return Ok(BaseResponse<List<UserSyncDto>>.Ok(users));
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Get users for sync error");
-            return StatusCode(500, BaseResponse<object>.Error("Internal server error", 500));
-        }
     }
 
     /// <summary>
@@ -62,6 +41,69 @@ public class SyncController : ControllerBase
     }
 
     /// <summary>
+    /// Получить связи пациент-диагноз для синхронизации
+    /// </summary>
+    [HttpGet("patientDiagnoses")]
+    [Authorize]
+    [ProducesResponseType(typeof(BaseResponse<List<PatientDiagnosisSyncDto>>), 200)]
+    public async Task<IActionResult> GetPatientDiagnosesForSync([FromQuery] DateTime? since)
+    {
+        try
+        {
+            var patientDiagnoses = await _syncService.GetChangedPatientDiagnosesAsync(since);
+            return Ok(BaseResponse<List<PatientDiagnosisSyncDto>>.Ok(patientDiagnoses));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Get patient diagnoses sync error");
+            return StatusCode(500, BaseResponse<object>.Error("Internal server error", 500));
+        }
+    }
+
+    /// <summary>
+    /// Создать связь пациент-диагноз
+    /// </summary>
+    [HttpPost("patientDiagnoses")]
+    [Authorize(Roles = "doctor,head")]
+    [ProducesResponseType(typeof(BaseResponse<object>), 201)]
+    public async Task<IActionResult> CreatePatientDiagnosis([FromBody] PatientDiagnosisSyncDto dto)
+    {
+        try
+        {
+            var id = await _syncService.UpsertPatientDiagnosisAsync(dto);
+            return Ok(BaseResponse<object>.Ok(new { id }, "Patient diagnosis created"));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Create patient diagnosis error");
+            return StatusCode(500, BaseResponse<object>.Error("Internal server error", 500));
+        }
+    }
+
+    /// <summary>
+    /// Обновить связь пациент-диагноз
+    /// </summary>
+    [HttpPut("patientDiagnoses/{id}")]
+    [Authorize(Roles = "doctor,head")]
+    [ProducesResponseType(typeof(BaseResponse<bool>), 200)]
+    [ProducesResponseType(typeof(BaseResponse<object>), 404)]
+    public async Task<IActionResult> UpdatePatientDiagnosis(Guid id, [FromBody] PatientDiagnosisSyncDto dto)
+    {
+        try
+        {
+            dto.Id = id;
+            var result = await _syncService.UpsertPatientDiagnosisAsync(dto);
+            return Ok(BaseResponse<bool>.Ok(true, "Patient diagnosis updated"));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Update patient diagnosis error");
+            return StatusCode(500, BaseResponse<object>.Error("Internal server error", 500));
+        }
+    }
+
+
+    /// <summary>
     /// Получить госпитализации для синхронизации
     /// </summary>
     [HttpGet("hospitalizations")]
@@ -77,6 +119,28 @@ public class SyncController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Get hospitalizations for sync error");
+            return StatusCode(500, BaseResponse<object>.Error("Internal server error", 500));
+        }
+    }
+
+    /// <summary>
+    /// Обновить госпитализацию (назначить врача)
+    /// </summary>
+    [HttpPut("hospitalizations/{hospitalizationId}")]
+    [Authorize(Roles = "head")]
+    [ProducesResponseType(typeof(BaseResponse<bool>), 200)]
+    public async Task<IActionResult> UpdateHospitalization(Guid hospitalizationId, [FromBody] UpdateHospitalizationRequest request)
+    {
+        try
+        {
+            var result = await _syncService.UpdateHospitalizationAsync(hospitalizationId, request);
+            if (!result)
+                return NotFound(BaseResponse<object>.NotFound("Hospitalization not found"));
+            return Ok(BaseResponse<bool>.Ok(true, "Hospitalization updated"));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Update hospitalization error");
             return StatusCode(500, BaseResponse<object>.Error("Internal server error", 500));
         }
     }
@@ -125,17 +189,17 @@ public class SyncController : ControllerBase
     }
 
     /// <summary>
-    /// Получить назначения для синхронизации
+    /// Получить назначения с executions для синхронизации
     /// </summary>
     [HttpGet("appointments")]
     [Authorize]
-    [ProducesResponseType(typeof(BaseResponse<List<AppointmentSyncDto>>), 200)]
+    [ProducesResponseType(typeof(BaseResponse<List<AppointmentSyncFullDto>>), 200)]
     public async Task<IActionResult> GetAppointmentsForSync([FromQuery] Guid? hospitalizationId, [FromQuery] DateTime? since)
     {
         try
         {
-            var appointments = await _syncService.GetChangedAppointmentsAsync(hospitalizationId, since);
-            return Ok(BaseResponse<List<AppointmentSyncDto>>.Ok(appointments));
+            var appointments = await _syncService.GetAppointmentsWithExecutionsAsync(hospitalizationId, since);
+            return Ok(BaseResponse<List<AppointmentSyncFullDto>>.Ok(appointments));
         }
         catch (Exception ex)
         {
@@ -144,25 +208,23 @@ public class SyncController : ControllerBase
         }
     }
 
-/// <summary>
-/// Обновить статус назначения
-/// </summary>
-[HttpPut("appointments/{appointmentId}")]
-    [Authorize]
+    // SyncController.cs
+
+    /// <summary>
+    /// Обновить назначение (статус, завершение)
+    /// </summary>
+    [HttpPut("appointments/{appointmentId}")]
+    [Authorize(Roles = "doctor,head,nurse")]
     [ProducesResponseType(typeof(BaseResponse<bool>), 200)]
-    [ProducesResponseType(typeof(BaseResponse<object>), 404)]
-    public async Task<IActionResult> UpdateAppointmentStatus(Guid appointmentId, [FromBody] UpdateAppointmentRequest request)
+    public async Task<IActionResult> UpdateAppointment(Guid appointmentId, [FromBody] UpdateAppointmentRequest request)
     {
         try
         {
-            var result = await _syncService.UpdateAppointmentStatusAsync(appointmentId, request.Status, request.CompletedBy);
-
+            var result = await _syncService.UpdateAppointmentAsync(appointmentId, request);
             if (!result)
-            {
                 return NotFound(BaseResponse<object>.NotFound("Appointment not found"));
-            }
 
-            return Ok(BaseResponse<bool>.Ok(true, "Appointment updated successfully"));
+            return Ok(BaseResponse<bool>.Ok(true, "Appointment updated"));
         }
         catch (Exception ex)
         {
@@ -172,24 +234,50 @@ public class SyncController : ControllerBase
     }
 
     /// <summary>
-    /// Получить связи пациент-диагноз для синхронизации
+    /// Создать назначение
     /// </summary>
-    [HttpGet("patientDiagnoses")]
-    [Authorize]
-    [ProducesResponseType(typeof(BaseResponse<List<PatientDiagnosisSyncDto>>), 200)]
-    public async Task<IActionResult> GetPatientDiagnosesForSync([FromQuery] DateTime? since)
+    [HttpPost("appointments")]
+    [Authorize(Roles = "doctor,head")]
+    [ProducesResponseType(typeof(BaseResponse<object>), 201)]
+    public async Task<IActionResult> CreateAppointment([FromBody] CreateAppointmentRequest request)
     {
         try
         {
-            var patientDiagnoses = await _syncService.GetChangedPatientDiagnosesAsync(since);
-            return Ok(BaseResponse<List<PatientDiagnosisSyncDto>>.Ok(patientDiagnoses));
+            var userId = Guid.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value!);
+            var appointmentId = await _syncService.CreateAppointmentWithExecutionsAsync(request, userId);
+            return Ok(BaseResponse<object>.Ok(new { id = appointmentId }, "Appointment created with executions"));
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Get patient diagnoses sync error");
+            _logger.LogError(ex, "Create appointment error");
             return StatusCode(500, BaseResponse<object>.Error("Internal server error", 500));
         }
     }
+
+    /// <summary>
+    /// Обновить статус выполнения (от медсестры)
+    /// </summary>
+    [HttpPut("appointmentExecutions/{executionId}")]
+    [Authorize(Roles = "nurse,doctor,head")]
+    [ProducesResponseType(typeof(BaseResponse<bool>), 200)]
+    public async Task<IActionResult> UpdateExecutionStatus(Guid executionId, [FromBody] UpdateExecutionRequest request)
+    {
+        try
+        {
+            var userId = Guid.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value!);
+            var result = await _syncService.UpdateExecutionStatusAsync(executionId, request.Status, userId);
+
+            if (!result) return NotFound(BaseResponse<object>.NotFound("Execution not found"));
+
+            return Ok(BaseResponse<bool>.Ok(true, "Execution updated"));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Update execution error");
+            return StatusCode(500, BaseResponse<object>.Error("Internal server error", 500));
+        }
+    }
+
 
     /// <summary>
     /// Получить заметки врача для синхронизации
@@ -248,5 +336,25 @@ public class SyncController : ControllerBase
                 id
             }
         });
+    }
+
+    /// <summary>
+    /// Получить аналитику отделения
+    /// </summary>
+    [HttpGet("analytics")]
+    [Authorize(Roles = "head")]
+    [ProducesResponseType(typeof(BaseResponse<DepartmentAnalyticsDto>), 200)]
+    public async Task<IActionResult> GetDepartmentAnalytics()
+    {
+        try
+        {
+            var analytics = await _syncService.GetDepartmentAnalyticsAsync();
+            return Ok(BaseResponse<DepartmentAnalyticsDto>.Ok(analytics, "Аналитика загружена"));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Get analytics error");
+            return StatusCode(500, BaseResponse<object>.Error("Internal server error", 500));
+        }
     }
 }

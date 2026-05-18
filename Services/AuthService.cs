@@ -198,6 +198,29 @@ public class AuthService : IAuthService
         };
     }
 
+    public async Task<List<UserSyncDto>> GetUsersForSyncAsync(DateTime? since)
+    {
+        var query = _context.Users.AsQueryable();
+
+        if (since.HasValue)
+        {
+            query = query.Where(u => u.UpdatedDt > since.Value || u.CreatedDt > since.Value);
+        }
+
+        return await query
+            .Select(u => new UserSyncDto
+            {
+                Id = u.UserId,
+                Login = u.Login,
+                FullName = u.FullName,
+                Role = u.Role,
+                Version = u.Version,
+                UpdatedDt = u.UpdatedDt,
+                IsDeleted = u.IsDeleted
+            })
+            .ToListAsync();
+    }
+
     public async Task<List<UserInfoResponse>> GetAllUsersAsync()
     {
         return await _context.Users

@@ -60,8 +60,5 @@ public partial class Hospitalization
     public virtual ICollection<PatientDiagnosis> PatientDiagnoses { get; set; } = new List<PatientDiagnosis>();
 
     [InverseProperty("Hospitalization")]
-    public virtual ICollection<PatientStatusHistory> PatientStatusHistories { get; set; } = new List<PatientStatusHistory>();
-
-    [InverseProperty("Hospitalization")]
     public virtual ICollection<VitalSign> VitalSigns { get; set; } = new List<VitalSign>();
 }

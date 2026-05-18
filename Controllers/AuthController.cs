@@ -151,21 +151,21 @@ public class AuthController : ControllerBase
     }
 
     /// <summary>
-    /// Get all users (Admin only)
+    /// Получить всех пользователей для синхронизации
     /// </summary>
     [HttpGet("users")]
     [Authorize(Roles = "head")]
-    [ProducesResponseType(typeof(BaseResponse<List<UserInfoResponse>>), 200)]
-    public async Task<IActionResult> GetAllUsers()
+    [ProducesResponseType(typeof(BaseResponse<List<UserSyncDto>>), 200)]
+    public async Task<IActionResult> GetUsersForSync([FromQuery] DateTime? since)
     {
         try
         {
-            var users = await _authService.GetAllUsersAsync();
-            return Ok(BaseResponse<List<UserInfoResponse>>.Ok(users));
+            var users = await _authService.GetUsersForSyncAsync(since);
+            return Ok(BaseResponse<List<UserSyncDto>>.Ok(users));
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Get all users error");
+            _logger.LogError(ex, "Get users for sync error");
             return StatusCode(500, BaseResponse<object>.Error("Internal server error", 500));
         }
     }

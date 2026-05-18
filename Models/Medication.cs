@@ -32,6 +32,4 @@ public partial class Medication
 
     public long Version { get; set; }
 
-    [InverseProperty("Medication")]
-    public virtual ICollection<AppointmentMedication> AppointmentMedications { get; set; } = new List<AppointmentMedication>();
 }

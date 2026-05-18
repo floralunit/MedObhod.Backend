@@ -2,7 +2,6 @@
 
 namespace MedObhod.Backend.DTOs;
 
-// ============ Request DTOs ============
 public class LoginRequest
 {
     [Required(ErrorMessage = "Login is required")]
@@ -61,7 +60,6 @@ public class ChangePasswordRequest
     public string NewPassword { get; set; } = string.Empty;
 }
 
-// ============ Response DTOs ============
 public class LoginResponse
 {
     public Guid UserId { get; set; }
@@ -73,7 +71,6 @@ public class LoginResponse
     public DateTime AccessTokenExpiresAt { get; set; }
     public DateTime RefreshTokenExpiresAt { get; set; }
 
-    // Для офлайн-работы
     public long UserVersion { get; set; }
     public Dictionary<string, List<string>> Permissions { get; set; } = new();
 }
@@ -103,4 +100,15 @@ public class SessionInfoResponse
     public DateTime LoginTime { get; set; }
     public DateTime LastActivity { get; set; }
     public string IpAddress { get; set; } = string.Empty;
+}
+
+public class UserSyncDto
+{
+    public Guid Id { get; set; }
+    public string Login { get; set; } = string.Empty;
+    public string FullName { get; set; } = string.Empty;
+    public string Role { get; set; } = string.Empty;
+    public long Version { get; set; }
+    public DateTime? UpdatedDt { get; set; }
+    public bool IsDeleted { get; set; }
 }

@@ -9,10 +9,9 @@ public interface IAuthService
     Task<bool> LogoutAsync(string refreshToken);
     Task<bool> ChangePasswordAsync(Guid userId, ChangePasswordRequest request);
     Task<UserInfoResponse?> GetUserInfoAsync(Guid userId);
-    Task<List<UserInfoResponse>> GetAllUsersAsync();
+    Task<List<UserSyncDto>> GetUsersForSyncAsync(DateTime? since);
     Task<UserInfoResponse> CreateUserAsync(RegisterRequest request, Guid createdBy);
     Task<bool> UpdateUserRoleAsync(Guid userId, string newRole, Guid updatedBy);
     Task<bool> DeleteUserAsync(Guid userId, Guid deletedBy);
     Task<List<SessionInfoResponse>> GetUserSessionsAsync(Guid userId);
-    Task<bool> RevokeSessionAsync(Guid sessionId, Guid userId);
 }

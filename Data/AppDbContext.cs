@@ -20,8 +20,6 @@ public partial class AppDbContext : DbContext
 
     public virtual DbSet<AppointmentExecution> AppointmentExecutions { get; set; }
 
-    public virtual DbSet<AppointmentMedication> AppointmentMedications { get; set; }
-
     public virtual DbSet<AppointmentSchedule> AppointmentSchedules { get; set; }
 
     public virtual DbSet<AppointmentTemplate> AppointmentTemplates { get; set; }
@@ -43,8 +41,6 @@ public partial class AppDbContext : DbContext
     public virtual DbSet<Patient> Patients { get; set; }
 
     public virtual DbSet<PatientDiagnosis> PatientDiagnoses { get; set; }
-
-    public virtual DbSet<PatientStatusHistory> PatientStatusHistories { get; set; }
 
     public virtual DbSet<User> Users { get; set; }
 
@@ -84,19 +80,6 @@ public partial class AppDbContext : DbContext
             entity.HasOne(d => d.Appointment).WithMany(p => p.AppointmentExecutions).HasConstraintName("FK__Appointme__Versi__114A936A");
 
             entity.HasOne(d => d.ExecutedUser).WithMany(p => p.AppointmentExecutions).HasConstraintName("FK__Appointme__Execu__123EB7A3");
-        });
-
-        modelBuilder.Entity<AppointmentMedication>(entity =>
-        {
-            entity.HasKey(e => e.AppointmentMedicationId).HasName("PK__Appointm__317C6FE85C319F56");
-
-            entity.Property(e => e.AppointmentMedicationId).HasDefaultValueSql("(newid())");
-            entity.Property(e => e.CreatedDt).HasDefaultValueSql("(getdate())");
-            entity.Property(e => e.IsDeleted).HasDefaultValue(false);
-
-            entity.HasOne(d => d.Appointment).WithMany(p => p.AppointmentMedications).HasConstraintName("FK__Appointme__Versi__7F2BE32F");
-
-            entity.HasOne(d => d.Medication).WithMany(p => p.AppointmentMedications).HasConstraintName("FK__Appointme__Medic__00200768");
         });
 
         modelBuilder.Entity<AppointmentSchedule>(entity =>
@@ -219,17 +202,6 @@ public partial class AppDbContext : DbContext
             entity.HasOne(d => d.Diagnosis).WithMany(p => p.PatientDiagnoses).HasConstraintName("FK__PatientDi__Diagn__628FA481");
 
             entity.HasOne(d => d.Hospitalization).WithMany(p => p.PatientDiagnoses).HasConstraintName("FK__PatientDi__Versi__619B8048");
-        });
-
-        modelBuilder.Entity<PatientStatusHistory>(entity =>
-        {
-            entity.HasKey(e => e.PatientStatusHistoryId).HasName("PK__PatientS__461F28B4B58993D3");
-
-            entity.Property(e => e.PatientStatusHistoryId).HasDefaultValueSql("(newid())");
-            entity.Property(e => e.CreatedDt).HasDefaultValueSql("(getdate())");
-            entity.Property(e => e.IsDeleted).HasDefaultValue(false);
-
-            entity.HasOne(d => d.Hospitalization).WithMany(p => p.PatientStatusHistories).HasConstraintName("FK__PatientSt__Versi__2BFE89A6");
         });
 
         modelBuilder.Entity<User>(entity =>

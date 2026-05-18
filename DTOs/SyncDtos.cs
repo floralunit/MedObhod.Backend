@@ -1,35 +1,5 @@
 ﻿namespace MedObhod.Backend.DTOs;
 
-// ============ Request DTOs ============
-public class SyncRequest
-{
-    public Guid UserId { get; set; }
-    public string DeviceId { get; set; } = string.Empty;
-    public DateTime? LastSyncTime { get; set; }
-    public List<SyncChangeItem> Changes { get; set; } = new();
-}
-
-public class SyncChangeItem
-{
-    public string EntityName { get; set; } = string.Empty; // Patient, Hospitalization, VitalSign, Appointment
-    public string Operation { get; set; } = string.Empty; // INSERT, UPDATE, DELETE
-    public Guid LocalId { get; set; }
-    public Guid? ServerId { get; set; }
-    public string Data { get; set; } = string.Empty; // JSON data
-    public DateTime ChangedAt { get; set; }
-}
-
-// ============ Response DTOs ============
-public class SyncResponse
-{
-    public bool Success { get; set; }
-    public string Message { get; set; } = string.Empty;
-    public DateTime ServerTime { get; set; }
-    public List<SyncChangeItem> ServerChanges { get; set; } = new();
-    public Dictionary<Guid, Guid> IdMapping { get; set; } = new(); // LocalId -> ServerId
-}
-
-// ============ Entity Sync DTOs ============
 public class PatientSyncDto
 {
     public Guid? Id { get; set; }
@@ -39,6 +9,15 @@ public class PatientSyncDto
     public long Version { get; set; }
     public DateTime? UpdatedDt { get; set; }
     public bool IsDeleted { get; set; }
+}
+public class PatientDiagnosisSyncDto
+{
+    public Guid Id { get; set; }
+    public Guid HospitalizationId { get; set; }
+    public Guid DiagnosisId { get; set; }
+    public bool IsPrimary { get; set; }
+    public long Version { get; set; }
+    public DateTime? UpdatedDt { get; set; }
 }
 
 public class HospitalizationSyncDto
@@ -54,6 +33,13 @@ public class HospitalizationSyncDto
     public long Version { get; set; }
     public DateTime? UpdatedDt { get; set; }
     public bool IsDeleted { get; set; }
+}
+
+public class UpdateHospitalizationRequest
+{
+    public Guid? AttendingDoctorId { get; set; }
+    public string? Status { get; set; }
+    public string? Room { get; set; }
 }
 
 public class VitalSignSyncDto
@@ -74,48 +60,16 @@ public class VitalSignSyncDto
     public bool IsDeleted { get; set; }
 }
 
-public class AppointmentSyncDto
+public class CreateVitalSignRequest
 {
-    public Guid? Id { get; set; }
     public Guid HospitalizationId { get; set; }
-    public string TemplateId { get; set; } = string.Empty;
-    public Guid InsUserId { get; set; }
-    public string Type { get; set; } = string.Empty;
-    public string Name { get; set; } = string.Empty;
-    public string Priority { get; set; } = string.Empty;
-    public int DurationMin { get; set; }
-    public string? Instructions { get; set; }
-    public string? Notes { get; set; }
-    public string Status { get; set; } = string.Empty;
-    public long Version { get; set; }
-    public DateTime? UpdatedDt { get; set; }
-}
-
-public class UserSyncDto
-{
-    public Guid Id { get; set; }
-    public string Login { get; set; } = string.Empty;
-    public string FullName { get; set; } = string.Empty;
-    public string Role { get; set; } = string.Empty;
-    public long Version { get; set; }
-    public DateTime? UpdatedDt { get; set; }
-    public bool IsDeleted { get; set; }
-}
-
-public class UpdateAppointmentRequest
-{
-    public string Status { get; set; } = string.Empty;
-    public Guid? CompletedBy { get; set; }
-}
-
-public class PatientDiagnosisSyncDto
-{
-    public Guid Id { get; set; }
-    public Guid HospitalizationId { get; set; }
-    public Guid DiagnosisId { get; set; }
-    public bool IsPrimary { get; set; }
-    public long Version { get; set; }
-    public DateTime? UpdatedDt { get; set; }
+    public DateTime CreatedDt { get; set; }
+    public double? Temperature { get; set; }
+    public int? Pulse { get; set; }
+    public int? SystolicBP { get; set; }
+    public int? DiastolicBP { get; set; }
+    public int? SpO2 { get; set; }
+    public int? RespiratoryRate { get; set; }
 }
 
 public class DoctorNoteSyncDto
@@ -136,18 +90,6 @@ public class DoctorNoteSyncDto
     public long Version { get; set; }
     public DateTime? UpdatedDt { get; set; }
     public bool IsDeleted { get; set; }
-}
-
-public class CreateVitalSignRequest
-{
-    public Guid HospitalizationId { get; set; }
-    public DateTime CreatedDt { get; set; }
-    public double? Temperature { get; set; }
-    public int? Pulse { get; set; }
-    public int? SystolicBP { get; set; }
-    public int? DiastolicBP { get; set; }
-    public int? SpO2 { get; set; }
-    public int? RespiratoryRate { get; set; }
 }
 
 public class CreateDoctorNoteRequest
@@ -183,4 +125,134 @@ public class CompleteDoctorRoundItemRequest
     public DateTime? EndVisitTime { get; set; }
 
     public string Status { get; set; } = "pending";
+}
+
+public class AppointmentSyncDto
+{
+    public Guid Id { get; set; }
+    public Guid HospitalizationId { get; set; }
+    public string? TemplateId { get; set; }
+    public Guid InsUserId { get; set; }
+    public string? Type { get; set; }
+    public string? Name { get; set; }
+    public string? Priority { get; set; }
+    public int DurationMin { get; set; }
+    public string? Instructions { get; set; }
+    public string? Notes { get; set; }
+    public string? Status { get; set; }
+    public long Version { get; set; }
+    public DateTime CreatedDt { get; set; }
+    public DateTime? UpdatedDt { get; set; }
+    public bool IsDeleted { get; set; }
+
+    // Связанные данные
+    public AppointmentScheduleSyncDto? Schedule { get; set; }
+    public AppointmentMedicationSyncDto? Medication { get; set; }
+}
+
+public class UpdateAppointmentRequest
+{
+    public string? Status { get; set; }
+    public string? Priority { get; set; }
+    public string? Instructions { get; set; }
+    public string? Notes { get; set; }
+}
+
+public class CreateAppointmentRequest
+{
+    public Guid HospitalizationId { get; set; }
+    public string TemplateId { get; set; } = string.Empty;
+    public string Type { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
+    public string Priority { get; set; } = string.Empty;
+    public int DurationMin { get; set; }
+    public string? Instructions { get; set; }
+    public string? Notes { get; set; }
+    public AppointmentScheduleDto? Schedule { get; set; }
+    public AppointmentMedicationDto? Medication { get; set; }
+}
+public class AppointmentScheduleDto
+{
+    public string Frequency { get; set; } = string.Empty;
+    public string StartDate { get; set; } = string.Empty;
+    public string? EndDate { get; set; }
+    public string StartTime { get; set; } = string.Empty;
+    public string? RelationToMeal { get; set; }
+    public List<string> Times { get; set; } = new();
+}
+
+public class AppointmentMedicationDto
+{
+    public Guid? Id { get; set; }
+    public string? CustomName { get; set; }
+    public string? Dosage { get; set; }
+    public string? Form { get; set; }
+}
+
+public class AppointmentScheduleSyncDto
+{
+    public Guid Id { get; set; }
+    public string? Frequency { get; set; }
+    public DateTime StartDt { get; set; }
+    public DateTime? EndDt { get; set; }
+    public TimeSpan? StartTime { get; set; }
+    public string? RelationToMeal { get; set; }
+    public List<string>? Times { get; set; }
+}
+
+public class AppointmentMedicationSyncDto
+{
+    public Guid Id { get; set; }
+    public Guid? MedicationId { get; set; }
+    public string? CustomName { get; set; }
+    public string? Dosage { get; set; }
+    public string? Form { get; set; }
+}
+
+public class AppointmentSyncFullDto
+{
+    public AppointmentSyncDto Appointment { get; set; }
+    public List<AppointmentExecutionSyncDto> Executions { get; set; }
+}
+public class AppointmentExecutionSyncDto
+{
+    public Guid Id { get; set; }
+    public Guid AppointmentId { get; set; }
+    public DateTime ScheduledDateTime { get; set; }
+    public DateTime? ExecutedAt { get; set; }
+    public Guid? ExecutedUserId { get; set; }
+    public string Status { get; set; }
+    public string Notes { get; set; }
+    public DateTime CreatedDt { get; set; }
+    public DateTime UpdatedDt { get; set; }
+    public bool IsDeleted { get; set; }
+    public long Version { get; set; }
+}
+
+public class UpdateExecutionRequest
+{
+    public string Status { get; set; } = "completed";
+    public string? Notes { get; set; }
+}
+
+public class DepartmentAnalyticsDto
+{
+    public int TotalPatients { get; set; }
+    public int CriticalPatients { get; set; }
+    public int WarningPatients { get; set; }
+    public int StablePatients { get; set; }
+    public int PendingAppointments { get; set; }
+    public int CompletedToday { get; set; }
+    public int ActiveRounds { get; set; }
+    public List<DoctorAnalyticsDto> Doctors { get; set; } = new();
+}
+
+public class DoctorAnalyticsDto
+{
+    public Guid DoctorId { get; set; }
+    public string DoctorName { get; set; }
+    public int PatientsCount { get; set; }
+    public int CriticalCount { get; set; }
+    public int AppointmentsCount { get; set; }
+    public int RoundsCompleted { get; set; }
 }

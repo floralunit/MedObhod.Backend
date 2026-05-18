@@ -2,7 +2,6 @@
 using MedObhod.Backend.DTOs;
 using MedObhod.Backend.Models;
 using Microsoft.EntityFrameworkCore;
-using System.Text.Json;
 
 namespace MedObhod.Backend.Services;
 
@@ -15,165 +14,6 @@ public class DataSyncService : IDataSyncService
     {
         _context = context;
         _logger = logger;
-    }
-
-    public async Task<SyncResponse> ProcessSyncAsync(SyncRequest request)
-    {
-        var response = new SyncResponse
-        {
-            Success = true,
-            ServerTime = DateTime.Now,
-            IdMapping = new Dictionary<Guid, Guid>()
-        };
-
-        try
-        {
-            // Process each change from client
-            foreach (var change in request.Changes)
-            {
-                try
-                {
-                    switch (change.EntityName.ToLower())
-                    {
-                        case "patient":
-                            var patient = JsonSerializer.Deserialize<PatientSyncDto>(change.Data);
-                            if (patient != null)
-                            {
-                                var serverId = await UpsertPatientAsync(patient, change.LocalId);
-                                response.IdMapping[change.LocalId] = serverId;
-                            }
-                            break;
-
-                        case "hospitalization":
-                            var hospitalization = JsonSerializer.Deserialize<HospitalizationSyncDto>(change.Data);
-                            if (hospitalization != null)
-                            {
-                                var serverId = await UpsertHospitalizationAsync(hospitalization);
-                                response.IdMapping[change.LocalId] = serverId;
-                            }
-                            break;
-
-                        case "vitalsign":
-                            var vitalSign = JsonSerializer.Deserialize<VitalSignSyncDto>(change.Data);
-                            if (vitalSign != null)
-                            {
-                                var serverId = await UpsertVitalSignAsync(vitalSign);
-                                response.IdMapping[change.LocalId] = serverId;
-                            }
-                            break;
-
-                        case "appointment":
-                            var appointment = JsonSerializer.Deserialize<AppointmentSyncDto>(change.Data);
-                            if (appointment != null)
-                            {
-                                var serverId = await UpsertAppointmentAsync(appointment);
-                                response.IdMapping[change.LocalId] = serverId;
-                            }
-                            break;
-
-                        case "doctornote":
-                            var note = JsonSerializer.Deserialize<DoctorNoteSyncDto>(change.Data);
-                            if (note != null)
-                            {
-                                //var serverId = await UpsertDoctorNoteAsync(note);
-                                //response.IdMapping[change.LocalId] = serverId;
-                            }
-                            break;
-
-                        case "delete":
-                            await DeleteEntityAsync(change.EntityName, change.ServerId ?? change.LocalId);
-                            break;
-                    }
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Error processing change for entity {Entity}", change.EntityName);
-                    response.Success = false;
-                    response.Message = $"Error processing {change.EntityName}";
-                }
-            }
-
-            // Get changes from server that client doesn't have
-            if (response.Success)
-            {
-                var serverChanges = await GetServerChangesAsync(request.LastSyncTime);
-                response.ServerChanges = serverChanges;
-            }
-
-            await _context.SaveChangesAsync();
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Sync failed");
-            response.Success = false;
-            response.Message = "Sync failed: " + ex.Message;
-        }
-
-        return response;
-    }
-
-    private async Task<List<SyncChangeItem>> GetServerChangesAsync(DateTime? since)
-    {
-        var changes = new List<SyncChangeItem>();
-        var syncTime = since ?? DateTime.MinValue;
-
-        // Get changed patients
-        var patients = await GetChangedPatientsAsync(syncTime);
-        foreach (var patient in patients)
-        {
-            changes.Add(new SyncChangeItem
-            {
-                EntityName = "Patient",
-                Operation = patient.Id.HasValue ? "UPDATE" : "INSERT",
-                ServerId = patient.Id,
-                Data = JsonSerializer.Serialize(patient),
-                ChangedAt = patient.UpdatedDt ?? DateTime.Now
-            });
-        }
-
-        // Get changed hospitalizations
-        var hospitalizations = await GetChangedHospitalizationsAsync(syncTime);
-        foreach (var hospitalization in hospitalizations)
-        {
-            changes.Add(new SyncChangeItem
-            {
-                EntityName = "Hospitalization",
-                Operation = hospitalization.Id.HasValue ? "UPDATE" : "INSERT",
-                ServerId = hospitalization.Id,
-                Data = JsonSerializer.Serialize(hospitalization),
-                ChangedAt = hospitalization.UpdatedDt ?? DateTime.Now
-            });
-        }
-
-        // Get changed vital signs
-        var vitals = await GetChangedVitalSignsAsync(syncTime);
-        foreach (var vital in vitals)
-        {
-            changes.Add(new SyncChangeItem
-            {
-                //EntityName = "VitalSign",
-                //Operation = vital.Id.HasValue ? "UPDATE" : "INSERT",
-                //ServerId = vital.Id,
-                //Data = JsonSerializer.Serialize(vital),
-                //ChangedAt = vital.CreatedDt
-            });
-        }
-
-        // Get changed appointments
-        var appointments = await GetChangedAppointmentsAsync(syncTime);
-        foreach (var appointment in appointments)
-        {
-            changes.Add(new SyncChangeItem
-            {
-                EntityName = "Appointment",
-                Operation = appointment.Id.HasValue ? "UPDATE" : "INSERT",
-                ServerId = appointment.Id,
-                Data = JsonSerializer.Serialize(appointment),
-                ChangedAt = appointment.UpdatedDt ?? DateTime.Now
-            });
-        }
-
-        return changes;
     }
 
     public async Task<List<PatientSyncDto>> GetChangedPatientsAsync(DateTime? since)
@@ -199,6 +39,103 @@ public class DataSyncService : IDataSyncService
                 UpdatedDt = p.UpdatedDt
             })
             .ToListAsync();
+    }
+    public async Task<List<PatientDiagnosisSyncDto>> GetChangedPatientDiagnosesAsync(DateTime? since)
+    {
+        var query = _context.PatientDiagnoses
+            .Where(pd => !pd.IsDeleted)
+            .AsQueryable();
+
+        if (since.HasValue)
+        {
+            query = query.Where(pd => pd.UpdatedDt > since.Value || pd.CreatedDt > since.Value);
+        }
+
+        return await query
+            .Select(pd => new PatientDiagnosisSyncDto
+            {
+                Id = pd.PatientDiagnoseId,
+                HospitalizationId = pd.HospitalizationId,
+                DiagnosisId = pd.DiagnosisId,
+                IsPrimary = pd.IsPrimary,
+                Version = pd.Version,
+                UpdatedDt = pd.UpdatedDt
+            })
+            .ToListAsync();
+    }
+
+    /// <summary>
+    /// Создать или обновить связь пациент-диагноз
+    /// </summary>
+    public async Task<Guid> UpsertPatientDiagnosisAsync(PatientDiagnosisSyncDto dto)
+    {
+        var existing = await _context.PatientDiagnoses
+            .FirstOrDefaultAsync(pd => pd.PatientDiagnoseId == dto.Id);
+
+        if (existing == null)
+        {
+            // Создаем новую связь
+            var newPd = new PatientDiagnosis
+            {
+                PatientDiagnoseId = dto.Id != Guid.Empty ? dto.Id : Guid.NewGuid(),
+                HospitalizationId = dto.HospitalizationId,
+                DiagnosisId = dto.DiagnosisId,
+                IsPrimary = dto.IsPrimary,
+                CreatedDt = DateTime.Now,
+                UpdatedDt = DateTime.Now,
+                IsDeleted = false,
+                Version = 1
+            };
+
+            // Если это первичный диагноз — снимаем флаг isPrimary с других
+            if (dto.IsPrimary)
+            {
+                var otherDiagnoses = await _context.PatientDiagnoses
+                    .Where(pd => pd.HospitalizationId == dto.HospitalizationId
+                        && pd.PatientDiagnoseId != newPd.PatientDiagnoseId
+                        && !pd.IsDeleted)
+                    .ToListAsync();
+
+                foreach (var other in otherDiagnoses)
+                {
+                    other.IsPrimary = false;
+                    other.UpdatedDt = DateTime.Now;
+                    other.Version++;
+                }
+            }
+
+            _context.PatientDiagnoses.Add(newPd);
+            await _context.SaveChangesAsync();
+            return newPd.PatientDiagnoseId;
+        }
+        else
+        {
+            // Обновляем существующую
+            existing.DiagnosisId = dto.DiagnosisId;
+            existing.IsPrimary = dto.IsPrimary;
+            existing.UpdatedDt = DateTime.Now;
+            existing.Version++;
+
+            // Если это первичный диагноз — снимаем флаг с других
+            if (dto.IsPrimary)
+            {
+                var otherDiagnoses = await _context.PatientDiagnoses
+                    .Where(pd => pd.HospitalizationId == dto.HospitalizationId
+                        && pd.PatientDiagnoseId != dto.Id
+                        && !pd.IsDeleted)
+                    .ToListAsync();
+
+                foreach (var other in otherDiagnoses)
+                {
+                    other.IsPrimary = false;
+                    other.UpdatedDt = DateTime.Now;
+                    other.Version++;
+                }
+            }
+
+            await _context.SaveChangesAsync();
+            return existing.PatientDiagnoseId;
+        }
     }
 
     public async Task<List<HospitalizationSyncDto>> GetChangedHospitalizationsAsync(DateTime? since)
@@ -227,6 +164,26 @@ public class DataSyncService : IDataSyncService
                 UpdatedDt = h.UpdatedDt
             })
             .ToListAsync();
+    }
+    public async Task<bool> UpdateHospitalizationAsync(Guid hospitalizationId, UpdateHospitalizationRequest request)
+    {
+        var hosp = await _context.Hospitalizations
+            .FirstOrDefaultAsync(h => h.HospitalizationId == hospitalizationId && !h.IsDeleted);
+
+        if (hosp == null) return false;
+
+        if (request.AttendingDoctorId.HasValue)
+            hosp.AttendingDoctorId = request.AttendingDoctorId.Value;
+        if (!string.IsNullOrEmpty(request.Status))
+            hosp.Status = request.Status;
+        if (!string.IsNullOrEmpty(request.Room))
+            hosp.Room = request.Room;
+
+        hosp.UpdatedDt = DateTime.Now;
+        hosp.Version++;
+
+        await _context.SaveChangesAsync();
+        return true;
     }
 
     public async Task<List<VitalSignSyncDto>> GetChangedVitalSignsAsync(DateTime? since)
@@ -338,232 +295,6 @@ public class DataSyncService : IDataSyncService
         return score;
     }
 
-    public async Task<List<AppointmentSyncDto>> GetChangedAppointmentsAsync(DateTime? since)
-    {
-        var query = _context.Appointments
-            .Where(a => !a.IsDeleted)
-            .AsQueryable();
-
-        if (since.HasValue)
-        {
-            query = query.Where(a => a.UpdatedDt > since.Value || a.CreatedDt > since.Value);
-        }
-
-        return await query
-            .Select(a => new AppointmentSyncDto
-            {
-                Id = a.AppointmentId,
-                HospitalizationId = a.HospitalizationId,
-                TemplateId = a.TemplateId,
-                InsUserId = a.InsUserId,
-                Type = a.Type,
-                Name = a.Name,
-                Priority = a.Priority,
-                DurationMin = a.DurationMin,
-                Instructions = a.Instructions,
-                Notes = a.Notes,
-                Status = a.Status,
-                Version = a.Version,
-                UpdatedDt = a.UpdatedDt
-            })
-            .ToListAsync();
-    }
-
-    public async Task<Guid> UpsertPatientAsync(PatientSyncDto patient, Guid clientId)
-    {
-        var existing = await _context.Patients
-            .FirstOrDefaultAsync(p => p.PatientId == patient.Id);
-
-        if (existing == null)
-        {
-            // Create new
-            var newPatient = new Patient
-            {
-                PatientId = patient.Id ?? Guid.NewGuid(),
-                FullName = patient.FullName,
-                BirthDt = patient.BirthDt,
-                Gender = patient.Gender,
-                CreatedDt = DateTime.Now,
-                UpdatedDt = DateTime.Now,
-                IsDeleted = false,
-                Version = 1
-            };
-            _context.Patients.Add(newPatient);
-            return newPatient.PatientId;
-        }
-        else
-        {
-            // Update if newer version
-            if (patient.Version > existing.Version)
-            {
-                existing.FullName = patient.FullName;
-                existing.BirthDt = patient.BirthDt;
-                existing.Gender = patient.Gender;
-                existing.UpdatedDt = DateTime.Now;
-                existing.Version++;
-            }
-            return existing.PatientId;
-        }
-    }
-
-    public async Task<Guid> UpsertHospitalizationAsync(HospitalizationSyncDto hospitalization)
-    {
-        var existing = await _context.Hospitalizations
-            .FirstOrDefaultAsync(h => h.HospitalizationId == hospitalization.Id);
-
-        if (existing == null)
-        {
-            var newHospitalization = new Hospitalization
-            {
-                HospitalizationId = hospitalization.Id ?? Guid.NewGuid(),
-                PatientId = hospitalization.PatientId,
-                AdmissionDt = hospitalization.AdmissionDt,
-                DischargeDt = hospitalization.DischargeDt,
-                Room = hospitalization.Room,
-                Bed = hospitalization.Bed,
-                AttendingDoctorId = hospitalization.AttendingDoctorId,
-                Status = hospitalization.Status,
-                CreatedDt = DateTime.Now,
-                UpdatedDt = DateTime.Now,
-                IsDeleted = false,
-                Version = 1
-            };
-            _context.Hospitalizations.Add(newHospitalization);
-            return newHospitalization.HospitalizationId;
-        }
-        else
-        {
-            if (hospitalization.Version > existing.Version)
-            {
-                existing.DischargeDt = hospitalization.DischargeDt;
-                existing.Room = hospitalization.Room;
-                existing.Bed = hospitalization.Bed;
-                existing.Status = hospitalization.Status;
-                existing.UpdatedDt = DateTime.Now;
-                existing.Version++;
-            }
-            return existing.HospitalizationId;
-        }
-    }
-
-    public async Task<Guid> UpsertVitalSignAsync(VitalSignSyncDto vitalSign)
-    {
-        var existing = await _context.VitalSigns
-            .FirstOrDefaultAsync(v => v.VitalSignId == vitalSign.Id);
-
-        if (existing == null)
-        {
-            var newVitalSign = new VitalSign
-            {
-                //VitalSignId = vitalSign.Id ?? Guid.NewGuid(),
-                //HospitalizationId = vitalSign.HospitalizationId,
-                //CreatedDt = vitalSign.CreatedDt,
-                //Temperature = vitalSign.Temperature,
-                //Pulse = vitalSign.Pulse,
-                //SpO2 = vitalSign.SpO2,
-                //RespiratoryRate = vitalSign.RespiratoryRate,
-                //InsUserId = vitalSign.InsUserId,
-                //UpdatedDt = DateTime.Now,
-                //IsDeleted = false,
-                //Version = 1
-            };
-            _context.VitalSigns.Add(newVitalSign);
-            return newVitalSign.VitalSignId;
-        }
-        return existing.VitalSignId;
-    }
-
-    public async Task<Guid> UpsertAppointmentAsync(AppointmentSyncDto appointment)
-    {
-        var existing = await _context.Appointments
-            .FirstOrDefaultAsync(a => a.AppointmentId == appointment.Id);
-
-        if (existing == null)
-        {
-            var newAppointment = new Appointment
-            {
-                AppointmentId = appointment.Id ?? Guid.NewGuid(),
-                HospitalizationId = appointment.HospitalizationId,
-                TemplateId = appointment.TemplateId,
-                InsUserId = appointment.InsUserId,
-                Type = appointment.Type,
-                Name = appointment.Name,
-                Priority = appointment.Priority,
-                DurationMin = appointment.DurationMin,
-                Instructions = appointment.Instructions,
-                Notes = appointment.Notes,
-                Status = appointment.Status,
-                CreatedDt = DateTime.Now,
-                UpdatedDt = DateTime.Now,
-                IsDeleted = false,
-                Version = 1
-            };
-            _context.Appointments.Add(newAppointment);
-            return newAppointment.AppointmentId;
-        }
-        else
-        {
-            if (appointment.Version > existing.Version)
-            {
-                existing.Status = appointment.Status;
-                existing.UpdatedDt = DateTime.Now;
-                existing.Version++;
-            }
-            return existing.AppointmentId;
-        }
-    }
-
-    public async Task<bool> DeleteEntityAsync(string entityName, Guid id)
-    {
-        switch (entityName.ToLower())
-        {
-            case "patient":
-                var patient = await _context.Patients.FindAsync(id);
-                if (patient != null)
-                {
-                    patient.IsDeleted = true;
-                    patient.UpdatedDt = DateTime.Now;
-                    patient.Version++;
-                    return true;
-                }
-                break;
-
-            case "appointment":
-                var appointment = await _context.Appointments.FindAsync(id);
-                if (appointment != null)
-                {
-                    appointment.IsDeleted = true;
-                    appointment.UpdatedDt = DateTime.Now;
-                    appointment.Version++;
-                    return true;
-                }
-                break;
-        }
-        return false;
-    }
-
-    public async Task<List<UserSyncDto>> GetUsersForSyncAsync(DateTime? since)
-    {
-        var query = _context.Users.AsQueryable();
-
-        if (since.HasValue)
-        {
-            query = query.Where(u => u.UpdatedDt > since.Value || u.CreatedDt > since.Value);
-        }
-
-        return await query
-            .Select(u => new UserSyncDto
-            {
-                Id = u.UserId,
-                Login = u.Login,
-                FullName = u.FullName,
-                Role = u.Role,
-                Version = u.Version,
-                UpdatedDt = u.UpdatedDt,
-                IsDeleted = u.IsDeleted
-            })
-            .ToListAsync();
-    }
     public async Task<List<VitalSignSyncDto>> GetChangedVitalSignsAsync(Guid? hospitalizationId, DateTime? since)
     {
         var query = _context.VitalSigns.AsQueryable();
@@ -600,132 +331,6 @@ public class DataSyncService : IDataSyncService
             .ToListAsync();
     }
 
-    public async Task<List<AppointmentSyncDto>> GetChangedAppointmentsAsync(Guid? hospitalizationId, DateTime? since)
-    {
-        var query = _context.Appointments
-            .Where(a => !a.IsDeleted)
-            .AsQueryable();
-
-        if (hospitalizationId.HasValue)
-        {
-            query = query.Where(a => a.HospitalizationId == hospitalizationId.Value);
-        }
-
-        if (since.HasValue)
-        {
-            query = query.Where(a => a.UpdatedDt > since.Value || a.CreatedDt > since.Value);
-        }
-
-        return await query
-            .Select(a => new AppointmentSyncDto
-            {
-                Id = a.AppointmentId,
-                HospitalizationId = a.HospitalizationId,
-                TemplateId = a.TemplateId,
-                InsUserId = a.InsUserId,
-                Type = a.Type,
-                Name = a.Name,
-                Priority = a.Priority,
-                DurationMin = a.DurationMin,
-                Instructions = a.Instructions,
-                Notes = a.Notes,
-                Status = a.Status,
-                Version = a.Version,
-                UpdatedDt = a.UpdatedDt
-            })
-            .ToListAsync();
-    }
-
-    public async Task<bool> UpdateAppointmentStatusAsync(Guid appointmentId, string status, Guid? completedBy)
-    {
-        var appointment = await _context.Appointments
-            .FirstOrDefaultAsync(a => a.AppointmentId == appointmentId && !a.IsDeleted);
-
-        if (appointment == null) return false;
-
-        appointment.Status = status;
-        appointment.UpdatedDt = DateTime.Now;
-        appointment.Version++;
-
-        if (status == "completed" && completedBy.HasValue)
-        {
-            // Добавляем запись о выполнении
-            var execution = new AppointmentExecution
-            {
-                AppointmentExecutionId = Guid.NewGuid(),
-                AppointmentId = appointmentId,
-                ExecutedAt = DateTime.Now,
-                ExecutedUserId = completedBy.Value,
-                Status = status,
-                CreatedDt = DateTime.Now,
-                UpdatedDt = DateTime.Now,
-                IsDeleted = false,
-                Version = 1
-            };
-            _context.AppointmentExecutions.Add(execution);
-        }
-
-        await _context.SaveChangesAsync();
-        return true;
-    }
-
-    public async Task<List<PatientDiagnosisSyncDto>> GetChangedPatientDiagnosesAsync(DateTime? since)
-    {
-        var query = _context.PatientDiagnoses
-            .Where(pd => !pd.IsDeleted)
-            .AsQueryable();
-
-        if (since.HasValue)
-        {
-            query = query.Where(pd => pd.UpdatedDt > since.Value || pd.CreatedDt > since.Value);
-        }
-
-        return await query
-            .Select(pd => new PatientDiagnosisSyncDto
-            {
-                Id = pd.PatientDiagnoseId,
-                HospitalizationId = pd.HospitalizationId,
-                DiagnosisId = pd.DiagnosisId,
-                IsPrimary = pd.IsPrimary,
-                Version = pd.Version,
-                UpdatedDt = pd.UpdatedDt
-            })
-            .ToListAsync();
-    }
-
-    public async Task<Guid> UpsertPatientDiagnosisAsync(PatientDiagnosisSyncDto dto)
-    {
-        var existing = await _context.PatientDiagnoses
-            .FirstOrDefaultAsync(pd => pd.PatientDiagnoseId == dto.Id);
-
-        if (existing == null)
-        {
-            var newPatientDiagnosis = new PatientDiagnosis
-            {
-                PatientDiagnoseId = dto.Id,
-                HospitalizationId = dto.HospitalizationId,
-                DiagnosisId = dto.DiagnosisId,
-                IsPrimary = dto.IsPrimary,
-                CreatedDt = DateTime.Now,
-                UpdatedDt = DateTime.Now,
-                IsDeleted = false,
-                Version = 1
-            };
-            _context.PatientDiagnoses.Add(newPatientDiagnosis);
-            return newPatientDiagnosis.PatientDiagnoseId;
-        }
-        else
-        {
-            if (dto.Version > existing.Version)
-            {
-                existing.IsPrimary = dto.IsPrimary;
-                existing.UpdatedDt = DateTime.Now;
-                existing.Version++;
-            }
-            return existing.PatientDiagnoseId;
-        }
-    }
-
     public async Task<List<DoctorNoteSyncDto>> GetChangedDoctorNotesAsync(DateTime? since)
     {
         var query = _context.DoctorNotes
@@ -755,8 +360,6 @@ public class DataSyncService : IDataSyncService
             })
             .ToListAsync();
     }
-
-
 
     public async Task<Guid> CreateDoctorNoteAsync(CreateDoctorNoteRequest request, Guid doctorId)
     {
@@ -847,5 +450,300 @@ public class DataSyncService : IDataSyncService
             await transaction.RollbackAsync();
             throw;
         }
+    }
+
+    public async Task<List<AppointmentSyncFullDto>> GetAppointmentsWithExecutionsAsync(Guid? hospitalizationId, DateTime? since)
+    {
+        var query = _context.Appointments
+            .Where(a => !a.IsDeleted)
+            .AsQueryable();
+
+        if (hospitalizationId.HasValue)
+            query = query.Where(a => a.HospitalizationId == hospitalizationId.Value);
+
+        if (since.HasValue)
+            query = query.Where(a => a.UpdatedDt > since.Value || a.CreatedDt > since.Value);
+
+        var appointments = await query
+            .Include(a => a.AppointmentSchedules)
+            .ToListAsync();
+
+        var result = new List<AppointmentSyncFullDto>();
+
+        foreach (var apt in appointments)
+        {
+            // Получаем расписание
+            var schedule = apt.AppointmentSchedules.FirstOrDefault(s => !s.IsDeleted);
+            var scheduleDto = schedule != null ? new AppointmentScheduleSyncDto
+            {
+                Id = schedule.AppointmentScheduleId,
+                Frequency = schedule.Frequency,
+                StartDt = schedule.StartDt.Value,
+                EndDt = schedule.EndDt,
+                StartTime = schedule.StartTime?.ToTimeSpan(),
+                RelationToMeal = schedule.RelationToMeal,
+                Times = await _context.AppointmentTimes
+                    .Where(t => t.ScheduleId == schedule.AppointmentScheduleId && !t.IsDeleted)
+                    .Select(t => t.TimeValue.ToString())
+                    .ToListAsync()
+            } : null;
+
+            // Получаем executions
+            var executions = await _context.AppointmentExecutions
+                .Where(e => e.AppointmentId == apt.AppointmentId && !e.IsDeleted)
+                .Select(e => new AppointmentExecutionSyncDto
+                {
+                    Id = e.AppointmentExecutionId,
+                    AppointmentId = e.AppointmentId,
+                    ScheduledDateTime = e.ScheduledDatetime.Value,
+                    ExecutedAt = e.ExecutedAt,
+                    ExecutedUserId = e.ExecutedUserId,
+                    Status = e.Status,
+                    Notes = e.Notes,
+                    CreatedDt = e.CreatedDt,
+                    UpdatedDt = e.UpdatedDt.Value,
+                    IsDeleted = e.IsDeleted,
+                    Version = e.Version
+                })
+                .ToListAsync();
+
+            result.Add(new AppointmentSyncFullDto
+            {
+                Appointment = new AppointmentSyncDto
+                {
+                    Id = apt.AppointmentId,
+                    HospitalizationId = apt.HospitalizationId,
+                    TemplateId = apt.TemplateId,
+                    InsUserId = apt.InsUserId,
+                    Type = apt.Type,
+                    Name = apt.Name,
+                    Priority = apt.Priority,
+                    DurationMin = apt.DurationMin,
+                    Instructions = apt.Instructions,
+                    Notes = apt.Notes,
+                    Status = apt.Status,
+                    Schedule = scheduleDto,
+                    Version = apt.Version,
+                    CreatedDt = apt.CreatedDt,
+                    UpdatedDt = apt.UpdatedDt,
+                    IsDeleted = apt.IsDeleted
+                },
+                Executions = executions
+            });
+        }
+
+        return result;
+    }
+
+    public async Task<Guid> CreateAppointmentWithExecutionsAsync(CreateAppointmentRequest request, Guid userId)
+    {
+        using var transaction = await _context.Database.BeginTransactionAsync();
+
+        try
+        {
+            var appointmentId = Guid.NewGuid();
+            var now = DateTime.Now;
+
+            var appointment = new Appointment
+            {
+                AppointmentId = appointmentId,
+                HospitalizationId = request.HospitalizationId,
+                TemplateId = request.TemplateId,
+                InsUserId = userId,
+                Type = request.Type,
+                Name = request.Name,
+                Priority = request.Priority,
+                DurationMin = request.DurationMin,
+                Instructions = request.Instructions,
+                Notes = request.Notes,
+                Status = "pending",
+                CreatedDt = now,
+                UpdatedDt = now,
+                IsDeleted = false,
+                Version = 1
+            };
+            _context.Appointments.Add(appointment);
+
+            if (request.Schedule != null)
+            {
+                var schedule = new AppointmentSchedule
+                {
+                    AppointmentScheduleId = Guid.NewGuid(),
+                    AppointmentId = appointmentId,
+                    Frequency = request.Schedule.Frequency,
+                    StartDt = DateTime.Parse(request.Schedule.StartDate),
+                    EndDt = string.IsNullOrEmpty(request.Schedule.EndDate) ? null : DateTime.Parse(request.Schedule.EndDate),
+                    StartTime = TimeOnly.Parse(request.Schedule.StartTime),
+                    RelationToMeal = request.Schedule.RelationToMeal,
+                    CreatedDt = now,
+                    UpdatedDt = now,
+                    IsDeleted = false,
+                    Version = 1
+                };
+                _context.AppointmentSchedules.Add(schedule);
+
+                var times = request.Schedule.Times ?? new List<string> { request.Schedule.StartTime };
+                var startDate = DateTime.Parse(request.Schedule.StartDate).Date;
+
+                // Если endDate не указан, берем startDate + 1 день
+                // Если endDate указан, используем его
+                var endDate = string.IsNullOrEmpty(request.Schedule.EndDate)
+                    ? startDate.AddDays(1)
+                    : DateTime.Parse(request.Schedule.EndDate).Date;
+
+                // Начинаем с startDate (дата из карточки)
+                var currentDate = startDate;
+
+                while (currentDate <= endDate)
+                {
+                    foreach (var time in times)
+                    {
+                        var parts = time.Split(':');
+                        var scheduledDateTime = currentDate.AddHours(int.Parse(parts[0])).AddMinutes(int.Parse(parts[1]));
+
+                        // Создаем execution ТОЛЬКО если время в будущем
+                        // ИЛИ если это сегодня и время еще не прошло
+                        if (scheduledDateTime > now)
+                        {
+                            var execution = new AppointmentExecution
+                            {
+                                AppointmentExecutionId = Guid.NewGuid(),
+                                AppointmentId = appointmentId,
+                                ScheduledDatetime = scheduledDateTime,
+                                Status = "pending",
+                                CreatedDt = now,
+                                UpdatedDt = now,
+                                IsDeleted = false,
+                                Version = 1
+                            };
+                            _context.AppointmentExecutions.Add(execution);
+                        }
+                    }
+                    currentDate = currentDate.AddDays(1);
+                }
+            }
+
+            await _context.SaveChangesAsync();
+            await transaction.CommitAsync();
+
+            return appointmentId;
+        }
+        catch
+        {
+            await transaction.RollbackAsync();
+            throw;
+        }
+    }
+
+    public async Task<bool> UpdateExecutionStatusAsync(Guid executionId, string status, Guid userId)
+    {
+        var execution = await _context.AppointmentExecutions
+            .FirstOrDefaultAsync(e => e.AppointmentExecutionId == executionId && !e.IsDeleted);
+
+        if (execution == null) return false;
+
+        execution.Status = status;
+        execution.ExecutedAt = DateTime.Now;
+        execution.ExecutedUserId = userId;
+        execution.UpdatedDt = DateTime.Now;
+        execution.Version++;
+
+        await _context.SaveChangesAsync();
+        return true;
+    }
+
+    public async Task<bool> UpdateAppointmentAsync(Guid appointmentId, UpdateAppointmentRequest request)
+    {
+        var appointment = await _context.Appointments
+            .FirstOrDefaultAsync(a => a.AppointmentId == appointmentId && !a.IsDeleted);
+
+        if (appointment == null) return false;
+
+        if (!string.IsNullOrEmpty(request.Status))
+        {
+            appointment.Status = request.Status;
+
+            // Если завершаем — завершаем все pending executions
+            if (request.Status == "completed")
+            {
+                var pendingExecutions = await _context.AppointmentExecutions
+                    .Where(e => e.AppointmentId == appointmentId && e.Status == "pending" && !e.IsDeleted)
+                    .ToListAsync();
+
+                foreach (var exec in pendingExecutions)
+                {
+                    exec.Status = "cancelled";
+                    exec.UpdatedDt = DateTime.Now;
+                    exec.Version++;
+                }
+            }
+        }
+
+        appointment.UpdatedDt = DateTime.Now;
+        appointment.Version++;
+
+        await _context.SaveChangesAsync();
+        return true;
+    }
+
+    public async Task<DepartmentAnalyticsDto> GetDepartmentAnalyticsAsync()
+    {
+        var now = DateTime.Now;
+        var today = now.Date;
+
+        var analytics = new DepartmentAnalyticsDto();
+
+        // Пациенты
+        var activeHospitalizations = await _context.Hospitalizations
+            .Where(h => !h.IsDeleted && h.DischargeDt == null)
+            .ToListAsync();
+
+        analytics.TotalPatients = activeHospitalizations.Count;
+        analytics.CriticalPatients = activeHospitalizations.Count(h => h.Status == "critical");
+        analytics.WarningPatients = activeHospitalizations.Count(h => h.Status == "warning");
+        analytics.StablePatients = activeHospitalizations.Count(h => h.Status == "stable");
+
+        // Назначения
+        analytics.PendingAppointments = await _context.Appointments
+            .CountAsync(a => !a.IsDeleted && a.Status == "pending");
+
+        analytics.CompletedToday = await _context.AppointmentExecutions
+            .CountAsync(e => !e.IsDeleted && e.Status == "completed" && e.ExecutedAt >= today);
+
+        // Активные обходы
+        analytics.ActiveRounds = await _context.DoctorRounds
+            .CountAsync(r => !r.IsDeleted && r.Status == "in_progress" && r.StartTime >= today);
+
+        // Статистика по врачам
+        var doctors = await _context.Users
+            .Where(u => u.Role == "doctor" && !u.IsDeleted)
+            .ToListAsync();
+
+        foreach (var doc in doctors)
+        {
+            var docPatients = await _context.Hospitalizations
+                .CountAsync(h => h.AttendingDoctorId == doc.UserId && !h.IsDeleted && h.DischargeDt == null);
+
+            var docCritical = await _context.Hospitalizations
+                .CountAsync(h => h.AttendingDoctorId == doc.UserId && h.Status == "critical" && !h.IsDeleted && h.DischargeDt == null);
+
+            var docAppointments = await _context.Appointments
+                .CountAsync(a => a.InsUserId == doc.UserId && !a.IsDeleted && a.Status == "pending");
+
+            var docRounds = await _context.DoctorRounds
+                .CountAsync(r => r.DoctorId == doc.UserId && !r.IsDeleted);
+
+            analytics.Doctors.Add(new DoctorAnalyticsDto
+            {
+                DoctorId = doc.UserId,
+                DoctorName = doc.FullName,
+                PatientsCount = docPatients,
+                CriticalCount = docCritical,
+                AppointmentsCount = docAppointments,
+                RoundsCompleted = docRounds
+            });
+        }
+
+        return analytics;
     }
 }

@@ -13,7 +13,7 @@ public partial class AppointmentExecution
     public Guid AppointmentExecutionId { get; set; }
 
     [Column("Appointment_ID")]
-    public Guid? AppointmentId { get; set; }
+    public Guid AppointmentId { get; set; }
 
     [Column("ScheduledDATETIME")]
     public DateTime? ScheduledDatetime { get; set; }
